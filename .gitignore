@@ -29,7 +29,6 @@ pnpm-debug.log*
 # Local tooling and editor metadata
 .agents/
 .codex-plugins/
-.vscode/
 .idea/
 AGENTS.md
 CLAUDE.md
