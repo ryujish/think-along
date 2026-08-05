@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Light theme (default) */
+  --bg-primary: #f0f2f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: rgba(0, 0, 0, 0.035);
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafb;
+  --bg-elevated: #ffffff;
+
+  --text-primary: #0f1419;
+  --text-secondary: #536471;
+  --text-tertiary: #8b98a5;
+  --text-inverse: #ffffff;
+
+  --border-primary: rgba(0, 0, 0, 0.08);
+  --border-secondary: rgba(0, 0, 0, 0.12);
+  --border-emphasis: rgba(0, 0, 0, 0.18);
+
+  --accent-green: #08b86f;
+  --accent-green-soft: rgba(8, 184, 111, 0.1);
+  --accent-green-glow: rgba(8, 184, 111, 0.06);
+
+  --overlay-dark: rgba(0, 0, 0, 0.02);
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 8px 28px rgba(0, 0, 0, 0.08);
+  --shadow-glow: rgba(8, 184, 111, 0.15);
+}
+
+.dark {
+  --bg-primary: #02080a;
+  --bg-secondary: #071013;
+  --bg-tertiary: rgba(255, 255, 255, 0.045);
+  --bg-card: rgba(255, 255, 255, 0.04);
+  --bg-card-hover: rgba(255, 255, 255, 0.07);
+  --bg-elevated: #0b1a1e;
+
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary: rgba(255, 255, 255, 0.35);
+  --text-inverse: #0f1419;
+
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.12);
+  --border-emphasis: rgba(255, 255, 255, 0.18);
+
+  --accent-green: #18e58a;
+  --accent-green-soft: rgba(24, 229, 138, 0.1);
+  --accent-green-glow: rgba(24, 229, 138, 0.06);
+
+  --overlay-dark: rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-elevated: 0 8px 28px rgba(0, 0, 0, 0.3);
+  --shadow-glow: rgba(24, 229, 138, 0.22);
+}
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-secondary);
+}
+
+/* Selection color */
+::selection {
+  background: var(--accent-green-soft);
+  color: var(--text-primary);
+}

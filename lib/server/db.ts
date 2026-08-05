@@ -1,0 +1,124 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import type { AppDatabase, Insight, Thinking, User } from '@/lib/types';
+
+const dbPath = path.join(process.cwd(), 'data', 'db.json');
+
+const now = () => new Date().toISOString();
+
+const demoUser: User = {
+  id: 'usr_demo',
+  email: 'alex@example.com',
+  nickname: 'Alex',
+  authProvider: 'email',
+  interests: ['사업', '개발', '생산성'],
+  defaultAiProvider: 'GPT',
+  createdAt: now(),
+  updatedAt: now(),
+};
+
+const demoThinkings: Thinking[] = [
+  {
+    id: 'th_business_plan',
+    userId: demoUser.id,
+    title: '사업계획서',
+    prompt: 'B2B AI 메모 앱의 초기 사업계획서 구조를 잡아줘',
+    aiProvider: 'GPT',
+    status: 'active',
+    folder: 'Startup',
+    favorite: true,
+    tags: ['사업', 'MVP', 'Lean Canvas'],
+    insight: '사업 아이디어를 실행 계획으로 전환하려는 패턴이 강합니다.',
+    answer:
+      '초기 전략은 1인 창업자와 소규모 팀을 대상으로 한 Thinking 저장소입니다. MVP는 인증, Thinking 생성, Timeline, Insight 리포트로 시작하는 것이 좋습니다.',
+    createdAt: now(),
+    updatedAt: now(),
+  },
+  {
+    id: 'th_chart_analysis',
+    userId: demoUser.id,
+    title: '카바나 차트 분석',
+    prompt: '월별 전환율 데이터를 보고 병목을 찾아줘',
+    aiProvider: 'Gemini',
+    status: 'active',
+    folder: 'Data',
+    favorite: false,
+    tags: ['분석', '데이터'],
+    insight: '데이터를 근거로 의사결정하려는 질문이 증가했습니다.',
+    answer: '전환율 하락 구간을 채널, 퍼널 단계, 캠페인 변경일 기준으로 나누어 보면 병목을 더 빨리 찾을 수 있습니다.',
+    createdAt: now(),
+    updatedAt: now(),
+  },
+];
+
+const seedDatabase = (): AppDatabase => ({
+  users: [demoUser],
+  sessions: [],
+  thinkings: demoThinkings,
+  messages: demoThinkings.flatMap((thinking) => [
+    {
+      id: `${thinking.id}_msg_user`,
+      thinkingId: thinking.id,
+      role: 'user',
+      content: thinking.prompt,
+      aiProvider: thinking.aiProvider,
+      createdAt: thinking.createdAt,
+    },
+    {
+      id: `${thinking.id}_msg_assistant`,
+      thinkingId: thinking.id,
+      role: 'assistant',
+      content: thinking.answer,
+      aiProvider: thinking.aiProvider,
+      createdAt: thinking.createdAt,
+    },
+  ]),
+  attachments: [],
+  insights: [
+    {
+      id: 'in_weekly_demo',
+      userId: demoUser.id,
+      period: 'weekly',
+      title: '주간 인사이트',
+      summary: '최근 30일 동안 사업 관련 질문이 28% 증가했어요.',
+      patterns: ['사업 아이디어 관심 증가', '오전 9-11시 질문 집중', '데이터 분석 질문 증가'],
+      recommendations: ['Lean Canvas 작성', 'MVP 제작 범위 정리', '초기 고객 인터뷰 질문 설계'],
+      createdAt: now(),
+    } satisfies Insight,
+  ],
+});
+
+export async function readDb(): Promise<AppDatabase> {
+  await mkdir(path.dirname(dbPath), { recursive: true });
+
+  try {
+    const raw = await readFile(dbPath, 'utf8');
+    return JSON.parse(raw) as AppDatabase;
+  } catch {
+    const seeded = seedDatabase();
+    await writeDb(seeded);
+    return seeded;
+  }
+}
+
+export async function writeDb(db: AppDatabase): Promise<void> {
+  await mkdir(path.dirname(dbPath), { recursive: true });
+  await writeFile(dbPath, JSON.stringify(db, null, 2));
+}
+
+export async function updateDb<T>(mutator: (db: AppDatabase) => T | Promise<T>): Promise<T> {
+  const db = await readDb();
+  const result = await mutator(db);
+  await writeDb(db);
+  return result;
+}
+
+export function publicUser(user: User) {
+  return {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    interests: user.interests,
+    defaultAiProvider: user.defaultAiProvider,
+  };
+}

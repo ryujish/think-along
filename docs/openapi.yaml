@@ -1,0 +1,236 @@
+openapi: 3.1.0
+info:
+  title: Think Along API
+  version: 0.1.0
+  description: Product API draft for authentication, Thinking, search, insight, and export.
+servers:
+  - url: http://localhost:3000
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: think_along_session
+  schemas:
+    User:
+      type: object
+      required: [id, email, nickname, interests, defaultAiProvider]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        nickname: { type: string }
+        interests:
+          type: array
+          items: { type: string }
+        defaultAiProvider:
+          type: string
+          enum: [GPT, Claude, Gemini]
+    Thinking:
+      type: object
+      required: [id, userId, title, prompt, aiProvider, status, favorite, tags, answer, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        title: { type: string }
+        prompt: { type: string }
+        aiProvider:
+          type: string
+          enum: [GPT, Claude, Gemini]
+        status:
+          type: string
+          enum: [active, trashed, deleted]
+        folder: { type: string }
+        favorite: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+        insight: { type: string }
+        answer: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+paths:
+  /api/auth/email:
+    post:
+      summary: Email login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                nickname: { type: string }
+                interests:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: Signed in
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+  /api/auth/me:
+    get:
+      summary: Current user
+      responses:
+        '200':
+          description: Session state
+  /api/auth/logout:
+    post:
+      summary: Logout
+      responses:
+        '200':
+          description: Logged out
+  /api/thinkings:
+    get:
+      summary: List Thinkings
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, default: active }
+      responses:
+        '200':
+          description: Thinking list
+    post:
+      summary: Create Thinking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string }
+                aiProvider:
+                  type: string
+                  enum: [GPT, Claude, Gemini]
+                attachments:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '201':
+          description: Created Thinking with messages
+  /api/thinkings/{id}:
+    get:
+      summary: Thinking detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Thinking detail
+    patch:
+      summary: Update Thinking metadata
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated Thinking
+    delete:
+      summary: Move Thinking to trash
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trashed Thinking
+  /api/thinkings/{id}/continue:
+    post:
+      summary: Continue Thinking with previous context
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string }
+      responses:
+        '200':
+          description: Continued Thinking
+  /api/search:
+    get:
+      summary: Search Thinking records
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: ai
+          schema: { type: string }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: folder
+          schema: { type: string }
+        - in: query
+          name: favorite
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Search results
+  /api/insights:
+    get:
+      summary: List insights
+      responses:
+        '200':
+          description: Insight list
+    post:
+      summary: Generate weekly insight from saved Thinking records
+      responses:
+        '201':
+          description: Created insight
+  /api/export:
+    post:
+      summary: Export a Thinking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [thinkingId, format]
+              properties:
+                thinkingId: { type: string }
+                format:
+                  type: string
+                  enum: [markdown, pdf, word, notion]
+      responses:
+        '200':
+          description: Export payload
