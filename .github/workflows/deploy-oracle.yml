@@ -65,12 +65,15 @@ jobs:
           npm ci
           npm run build
           sudo install -m 0644 deploy/thingalong.service /etc/systemd/system/thingalong.service
+          sudo test -e /etc/nginx/conf.d/thingalong.conf || sudo install -m 0644 deploy/thingalong.conf /etc/nginx/conf.d/thingalong.conf
           sudo firewall-cmd --permanent --add-service=http
+          sudo firewall-cmd --permanent --add-service=https
           sudo firewall-cmd --reload
           sudo systemctl daemon-reload
           sudo systemctl enable --now thingalong
+          sudo systemctl reload nginx
           for attempt in {1..30}; do
-            curl --fail --silent http://127.0.0.1/ >/dev/null && exit 0
+            curl --fail --silent http://127.0.0.1:3000/ >/dev/null && exit 0
             sleep 2
           done
           sudo journalctl -u thingalong -n 80 --no-pager
