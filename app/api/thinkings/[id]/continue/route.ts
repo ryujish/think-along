@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { generateThinking, resolveProviderSelection } from '@/lib/server/ai';
+import { generateThinking, getAiProviderStatuses, resolveProviderSelection } from '@/lib/server/ai';
+import { generateCollaborativeThinking } from '@/lib/server/collaboration';
 import { createContextPacket } from '@/lib/server/context-engine';
 import { cacheContext } from '@/lib/server/context-cache';
 import { recordEvent } from '@/lib/server/events';
+import { getInternalAgentInstruction } from '@/lib/server/internal-agents';
 import { requireUser } from '@/lib/server/auth';
 import { readDb, updateDb } from '@/lib/server/db';
 import type { AiProvider } from '@/lib/types';
@@ -23,6 +25,12 @@ export async function POST(request: Request, context: RouteContext) {
     prompt?: string;
     aiProvider?: AiProvider;
     aiCredential?: {
+      connectionId?: string;
+      apiKey?: string;
+      model?: string;
+    };
+    collaborator?: {
+      provider?: AiProvider;
       connectionId?: string;
       apiKey?: string;
       model?: string;
@@ -64,15 +72,24 @@ export async function POST(request: Request, context: RouteContext) {
     body.aiCredential?.model ?? thinking.selectedModel,
   );
   const providerContext = cacheContext(contextPacket, provider, selection.connectionId, selection.model);
-  let ai;
+  const collaboratorProvider = body.collaborator?.provider;
+  const collaborator = collaboratorProvider && validProviders.includes(collaboratorProvider) && collaboratorProvider !== provider
+    ? resolveProviderSelection(collaboratorProvider, body.collaborator?.connectionId, body.collaborator?.model)
+    : undefined;
+  if (collaborator && !thinking.contextPolicy.allowedProviders.includes(collaborator.provider)) {
+    return NextResponse.json({ error: { code: 'PROVIDER_NOT_ALLOWED', message: '보조 Provider가 이 세션에서 허용되지 않았습니다.' } }, { status: 403 });
+  }
+  if (collaborator && !body.collaborator?.apiKey && !getAiProviderStatuses().some((item) => item.provider === collaborator.provider && item.connected)) {
+    return NextResponse.json({ error: { code: 'COLLABORATOR_NOT_CONNECTED', message: '보조 AI 연결을 먼저 설정해주세요.' } }, { status: 400 });
+  }
+  let collaboration;
   try {
-    ai = await generateThinking({
+    collaboration = await generateCollaborativeThinking({
       prompt: body.prompt,
-      provider,
       context: providerContext,
-      apiKey: body.aiCredential?.apiKey,
-      model: selection.model,
-    });
+      primary: { ...selection, apiKey: body.aiCredential?.apiKey },
+      collaborator: collaborator ? { ...collaborator, apiKey: body.collaborator?.apiKey } : undefined,
+    }, generateThinking, getInternalAgentInstruction);
   } catch (error) {
     return NextResponse.json(
       {
@@ -84,6 +101,7 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 502 },
     );
   }
+  const ai = collaboration.result;
   const now = new Date().toISOString();
 
   const updated = await updateDb((mutableDb) => {
@@ -126,7 +144,13 @@ export async function POST(request: Request, context: RouteContext) {
       },
     );
     mutableDb.contextSnapshots.push({ id: randomUUID(), userId: auth.user.id, thinkalongSessionId: item.thinkalongSessionId, version: contextPacket.version, provider, connectionId: selection.connectionId, model: selection.model, packet: contextPacket, createdAt: now });
-    recordEvent(mutableDb, { id: randomUUID(), userId: auth.user.id, thinkalongSessionId: item.thinkalongSessionId, type: 'model.executed', data: { provider, connectionId: selection.connectionId, model: selection.model, contextVersion: contextPacket.version }, createdAt: now });
+    mutableDb.subAgentRuns.push(...collaboration.contributions.map((contribution) => ({
+      id: randomUUID(), userId: auth.user.id, thinkalongSessionId: item.thinkalongSessionId,
+      role: 'thinker' as const, contextVersion: contextPacket.version, status: 'completed' as const,
+      output: contribution.answer, provider: contribution.provider, connectionId: contribution.connectionId,
+      model: contribution.model, createdAt: now,
+    })));
+    recordEvent(mutableDb, { id: randomUUID(), userId: auth.user.id, thinkalongSessionId: item.thinkalongSessionId, type: 'model.executed', data: { provider, connectionId: selection.connectionId, model: selection.model, contextVersion: contextPacket.version, collaborationModels: collaboration.contributions.map((item) => `${item.provider}:${item.model}`).join(',') }, createdAt: now });
 
     return item;
   });

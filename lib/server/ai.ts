@@ -1,6 +1,6 @@
 import type { AiProvider, ContextPacket, ModelCapability, ProviderCatalogItem, ProviderId } from '@/lib/types';
 
-type GenerateThinkingInput = {
+export type GenerateThinkingInput = {
   prompt: string;
   provider: AiProvider;
   context: ContextPacket;
@@ -8,7 +8,7 @@ type GenerateThinkingInput = {
   model?: string;
 };
 
-type AiResult = {
+export type AiResult = {
   title: string;
   answer: string;
   insight: string;

@@ -149,6 +149,9 @@ export type SubAgentRun = {
   contextVersion: number;
   status: 'completed' | 'failed';
   output?: string;
+  provider?: AiProvider;
+  connectionId?: string;
+  model?: string;
   createdAt: string;
 };
 

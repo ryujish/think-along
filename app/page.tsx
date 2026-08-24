@@ -198,6 +198,12 @@ function defaultAccountFor(provider: Provider, accounts: AiAccount[] = []) {
   return providerAccounts.find((account) => account.isDefault) ?? providerAccounts[0] ?? null;
 }
 
+function modelForProvider(provider: Provider, selectedModel: string | null, account?: AiAccount) {
+  return selectedModel && (providerModels[provider].includes(selectedModel) || account?.model === selectedModel)
+    ? selectedModel
+    : account?.model ?? providerModels[provider][0];
+}
+
 const introSlides = [
   {
     eyebrow: 'Thinking 저장',
@@ -607,7 +613,7 @@ function ProjectHomeScreen({
   const current = thinkings[0];
   const orderedAccounts = [...aiAccounts].sort((a, b) => Number(b.provider === selectedProvider) - Number(a.provider === selectedProvider));
   const selectedAccount = aiAccounts.find((item) => item.provider === selectedProvider && item.isDefault);
-  const selectedProviderModel = selectedModel ?? selectedAccount?.model ?? providerModels[selectedProvider][0];
+  const selectedProviderModel = modelForProvider(selectedProvider, selectedModel, selectedAccount);
   const selectedProviderModels = Array.from(new Set([selectedProviderModel, ...providerModels[selectedProvider]]));
   const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('ko-KR', {
     month: 'short',
@@ -1215,6 +1221,9 @@ function DetailScreen({
   selectedModel,
   onSelectModel,
   onSelectAccount,
+  collaborationEnabled,
+  setCollaborationEnabled,
+  collaboratorProvider,
 }: {
   prompt: string;
   selectedProvider: Provider;
@@ -1231,12 +1240,15 @@ function DetailScreen({
   selectedModel: string | null;
   onSelectModel: (model: string | null) => void;
   onSelectAccount: (accountId: string) => void;
+  collaborationEnabled: boolean;
+  setCollaborationEnabled: (enabled: boolean) => void;
+  collaboratorProvider: Provider | null;
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const orderedAccounts = [...aiAccounts].sort((a, b) => Number(b.provider === selectedProvider && b.isDefault) - Number(a.provider === selectedProvider && a.isDefault));
   const selectedAccount = aiAccounts.find((account) => account.provider === selectedProvider && account.isDefault);
-  const selectedProviderModel = selectedModel ?? selectedAccount?.model ?? providerModels[selectedProvider][0];
+  const selectedProviderModel = modelForProvider(selectedProvider, selectedModel, selectedAccount);
   const selectedProviderModels = Array.from(new Set([selectedProviderModel, ...providerModels[selectedProvider]]));
   const activeThinking = selectedThinking ?? {
     id: 'demo',
@@ -1393,6 +1405,18 @@ function DetailScreen({
         </section>
       </div>
       <div className="px-4 pb-3 pt-2" style={{ borderTop: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-secondary)' }}>
+        <button
+          type="button"
+          disabled={!collaboratorProvider}
+          onClick={() => setCollaborationEnabled(!collaborationEnabled)}
+          className="mb-2 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left disabled:opacity-40"
+          style={{ border: '1px solid var(--border-primary)', backgroundColor: collaborationEnabled ? 'var(--accent-green-soft)' : 'var(--bg-tertiary)' }}
+        >
+          <span className="text-[11px] font-extrabold">함께 생각하기</span>
+          <span className="text-[10px] font-bold" style={{ color: 'var(--text-secondary)' }}>
+            {collaboratorProvider ? `${selectedProvider} + ${collaboratorProvider} → 하나의 답변` : '다른 AI 계정이 필요합니다'}
+          </span>
+        </button>
         <p className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>다음 응답 모델</p>
         <div className="mt-2 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {orderedAccounts.map((account) => (
@@ -2326,6 +2350,7 @@ export default function Page() {
   const [providerAccountScreen, setProviderAccountScreen] = useState<Provider>('GPT');
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  const [collaborationEnabled, setCollaborationEnabled] = useState(false);
 
   const loadThinkings = async () => {
     const payload = await apiJson<{ thinkings: ProductThinking[] }>('/api/thinkings');
@@ -2349,7 +2374,6 @@ export default function Page() {
 
   const openThinking = (thinking: ProductThinking) => {
     setSelectedThinking(thinking);
-    setSelectedProvider(thinking.aiProvider);
     setScreen('detail');
     void loadConversation(thinking.id);
   };
@@ -2480,27 +2504,31 @@ export default function Page() {
         );
       }
 
-      const existingForProvider = current.filter((item) => item.provider === account.provider);
       const nextAccount: AiAccount = {
         ...account,
         id: `${account.provider}-${Date.now()}`,
-        isDefault: existingForProvider.length === 0,
+        isDefault: true,
         lastCheckedAt: new Date().toISOString(),
       };
 
-      return [...current, nextAccount];
+      return [
+        ...current.map((item) => item.provider === account.provider ? { ...item, isDefault: false } : item),
+        nextAccount,
+      ];
     });
     setSelectedProvider(account.provider);
+    setSelectedModel(account.model);
     setProviderAccountScreen(account.provider);
     setScreen('providerAccounts');
     setApiMessage(account.status === 'connected' ? `${account.provider} 계정이 연결되었습니다.` : 'API Key 확인이 필요합니다.');
   };
 
   const setDefaultAiAccount = (accountId: string) => {
+    const target = aiAccounts.find((account) => account.id === accountId);
+    if (!target) return;
+    setSelectedProvider(target.provider);
+    setSelectedModel(target.model);
     setAiAccounts((current) => {
-      const target = current.find((account) => account.id === accountId);
-      if (!target) return current;
-
       return current.map((account) => ({
         ...account,
         isDefault: account.provider === target.provider ? account.id === accountId : account.isDefault,
@@ -2609,6 +2637,9 @@ export default function Page() {
 
     try {
       const activeAccount = defaultAccountFor(selectedProvider, aiAccounts);
+      const collaboratorAccount = aiAccounts.find((account) => account.provider !== selectedProvider && account.provider === 'OpenCode Zen')
+        ?? aiAccounts.find((account) => account.provider !== selectedProvider && account.provider === 'GPT')
+        ?? aiAccounts.find((account) => account.provider !== selectedProvider);
       const payload = await apiJson<{ thinking: ProductThinking }>(`/api/thinkings/${selectedThinking.id}/continue`, {
         method: 'POST',
         body: JSON.stringify({
@@ -2619,6 +2650,14 @@ export default function Page() {
               apiKey: activeAccount.apiKey,
                 connectionId: activeAccount.id,
                 model: selectedProvider === 'OpenCode Zen' && selectedModel ? selectedModel : activeAccount.model,
+              }
+            : undefined,
+          collaborator: collaborationEnabled && collaboratorAccount
+            ? {
+                provider: collaboratorAccount.provider,
+                apiKey: collaboratorAccount.apiKey,
+                connectionId: collaboratorAccount.id,
+                model: collaboratorAccount.model,
               }
             : undefined,
         }),
@@ -2726,6 +2765,10 @@ export default function Page() {
     }
 
     if (screen === 'detail') {
+      const collaboratorProvider = aiAccounts.find((account) => account.provider !== selectedProvider && account.provider === 'OpenCode Zen')?.provider
+        ?? aiAccounts.find((account) => account.provider !== selectedProvider && account.provider === 'GPT')?.provider
+        ?? aiAccounts.find((account) => account.provider !== selectedProvider)?.provider
+        ?? null;
       return (
         <DetailScreen
           prompt={prompt}
@@ -2743,6 +2786,9 @@ export default function Page() {
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
           onSelectAccount={setDefaultAiAccount}
+          collaborationEnabled={collaborationEnabled}
+          setCollaborationEnabled={setCollaborationEnabled}
+          collaboratorProvider={collaboratorProvider}
         />
       );
     }
