@@ -11,6 +11,8 @@ dist/
 build/
 coverage/
 *.tsbuildinfo
+/output/
+/tmp/
 
 # Runtime data and local environment
 data/db.json
