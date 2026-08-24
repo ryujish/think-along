@@ -6,6 +6,15 @@ const dbPath = path.join(process.cwd(), 'data', 'db.json');
 
 const now = () => new Date().toISOString();
 
+const defaultSelections = {
+  GPT: { connectionId: 'openai:environment', model: process.env.OPENAI_MODEL || 'gpt-5.6-terra' },
+  Claude: { connectionId: 'anthropic:environment', model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5' },
+  Gemini: { connectionId: 'gemini:environment', model: process.env.GEMINI_MODEL || 'gemini-3.7-flash' },
+  Grok: { connectionId: 'xai:environment', model: process.env.XAI_MODEL || 'grok-4.6' },
+  Kimi: { connectionId: 'moonshot:environment', model: process.env.MOONSHOT_MODEL || 'kimi-k3' },
+  'OpenCode Zen': { connectionId: 'opencode:environment', model: process.env.OPENCODE_ZEN_MODEL || 'x-preview-f-free' },
+};
+
 const demoUser: User = {
   id: 'usr_demo',
   email: 'alex@example.com',
@@ -20,10 +29,14 @@ const demoUser: User = {
 const demoThinkings: Thinking[] = [
   {
     id: 'th_business_plan',
+    thinkalongSessionId: 'th_business_plan',
     userId: demoUser.id,
     title: '사업계획서',
     prompt: 'B2B AI 메모 앱의 초기 사업계획서 구조를 잡아줘',
     aiProvider: 'GPT',
+    selectedConnectionId: defaultSelections.GPT.connectionId,
+    selectedModel: defaultSelections.GPT.model,
+    contextPolicy: { allowedProviders: ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' },
     status: 'active',
     folder: 'Startup',
     favorite: true,
@@ -36,10 +49,14 @@ const demoThinkings: Thinking[] = [
   },
   {
     id: 'th_chart_analysis',
+    thinkalongSessionId: 'th_chart_analysis',
     userId: demoUser.id,
     title: '카바나 차트 분석',
     prompt: '월별 전환율 데이터를 보고 병목을 찾아줘',
     aiProvider: 'Gemini',
+    selectedConnectionId: defaultSelections.Gemini.connectionId,
+    selectedModel: defaultSelections.Gemini.model,
+    contextPolicy: { allowedProviders: ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' },
     status: 'active',
     folder: 'Data',
     favorite: false,
@@ -59,6 +76,7 @@ const seedDatabase = (): AppDatabase => ({
     {
       id: `${thinking.id}_msg_user`,
       thinkingId: thinking.id,
+      thinkalongSessionId: thinking.id,
       role: 'user',
       content: thinking.prompt,
       aiProvider: thinking.aiProvider,
@@ -67,6 +85,7 @@ const seedDatabase = (): AppDatabase => ({
     {
       id: `${thinking.id}_msg_assistant`,
       thinkingId: thinking.id,
+      thinkalongSessionId: thinking.id,
       role: 'assistant',
       content: thinking.answer,
       aiProvider: thinking.aiProvider,
@@ -86,6 +105,12 @@ const seedDatabase = (): AppDatabase => ({
       createdAt: now(),
     } satisfies Insight,
   ],
+  providerConnections: [],
+  decisions: [],
+  contextSnapshots: [],
+  events: [],
+  toolRuns: [],
+  subAgentRuns: [],
 });
 
 export async function readDb(): Promise<AppDatabase> {
@@ -93,7 +118,37 @@ export async function readDb(): Promise<AppDatabase> {
 
   try {
     const raw = await readFile(dbPath, 'utf8');
-    return JSON.parse(raw) as AppDatabase;
+    const db = JSON.parse(raw) as AppDatabase;
+    db.providerConnections ??= [];
+    db.decisions ??= [];
+    db.contextSnapshots ??= [];
+    db.events ??= [];
+    db.toolRuns ??= [];
+    db.subAgentRuns ??= [];
+    for (const user of db.users) {
+      if ((user.defaultAiProvider as string) === 'OpenRouter') user.defaultAiProvider = 'OpenCode Zen';
+      if ((user.defaultAiProvider as string) === 'MiMo') user.defaultAiProvider = 'Kimi';
+    }
+    for (const thinking of db.thinkings) {
+      if ((thinking.aiProvider as string) === 'OpenRouter') thinking.aiProvider = 'OpenCode Zen';
+      if ((thinking.aiProvider as string) === 'MiMo') thinking.aiProvider = 'Kimi';
+      thinking.thinkalongSessionId = thinking.id;
+      const selection = defaultSelections[thinking.aiProvider];
+      thinking.selectedConnectionId ??= selection.connectionId;
+      thinking.selectedModel ??= selection.model;
+      thinking.contextPolicy ??= { allowedProviders: ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' };
+      thinking.contextPolicy.allowedProviders = thinking.contextPolicy.allowedProviders.map((provider) => (provider as string) === 'OpenRouter' ? 'OpenCode Zen' : (provider as string) === 'MiMo' ? 'Kimi' : provider);
+      if (!thinking.contextPolicy.allowedProviders.includes('OpenCode Zen')) thinking.contextPolicy.allowedProviders.push('OpenCode Zen');
+      if (!thinking.contextPolicy.allowedProviders.includes('Grok')) thinking.contextPolicy.allowedProviders.push('Grok');
+      if (!thinking.contextPolicy.allowedProviders.includes('Kimi')) thinking.contextPolicy.allowedProviders.push('Kimi');
+      thinking.contextPolicy.routingMode = 'manual';
+    }
+    for (const message of db.messages) {
+      message.thinkalongSessionId ??= message.thinkingId;
+      if ((message.aiProvider as string) === 'OpenRouter') message.aiProvider = 'OpenCode Zen';
+    }
+    for (const attachment of db.attachments) attachment.thinkalongSessionId ??= attachment.thinkingId;
+    return db;
   } catch {
     const seeded = seedDatabase();
     await writeDb(seeded);

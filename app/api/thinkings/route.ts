@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { generateThinking } from '@/lib/server/ai';
+import { generateThinking, resolveProviderSelection } from '@/lib/server/ai';
+import { createContextPacket } from '@/lib/server/context-engine';
 import { requireUser } from '@/lib/server/auth';
+import { recordEvent } from '@/lib/server/events';
 import { readDb, updateDb } from '@/lib/server/db';
 import type { AiProvider, Attachment, ConversationMessage, Thinking } from '@/lib/types';
 
-const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini'];
+const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'];
 
 export async function GET(request: Request) {
   const auth = await requireUser(request);
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
     prompt?: string;
     aiProvider?: AiProvider;
     aiCredential?: {
+      connectionId?: string;
       apiKey?: string;
       model?: string;
     };
@@ -45,13 +48,17 @@ export async function POST(request: Request) {
   const aiProvider = validProviders.includes(body.aiProvider as AiProvider)
     ? (body.aiProvider as AiProvider)
     : auth.user.defaultAiProvider;
+  const thinkingId = randomUUID();
+  const contextPacket = createContextPacket({ thinkalongSessionId: thinkingId, messages: [], decisions: [], prompt: body.prompt });
+  const selection = resolveProviderSelection(aiProvider, body.aiCredential?.connectionId, body.aiCredential?.model);
   let ai;
   try {
     ai = await generateThinking({
       prompt: body.prompt,
       provider: aiProvider,
+      context: contextPacket,
       apiKey: body.aiCredential?.apiKey,
-      model: body.aiCredential?.model,
+      model: selection.model,
     });
   } catch (error) {
     return NextResponse.json(
@@ -65,20 +72,23 @@ export async function POST(request: Request) {
     );
   }
   const now = new Date().toISOString();
-  const thinkingId = randomUUID();
-
   const result = await updateDb<{ thinking: Thinking; messages: ConversationMessage[] }>((db) => {
     const thinking: Thinking = {
       id: thinkingId,
+      thinkalongSessionId: thinkingId,
       userId: auth.user.id,
       title: ai.title,
       prompt: body.prompt!.trim(),
       aiProvider,
+      selectedConnectionId: selection.connectionId,
+      selectedModel: selection.model,
+      contextPolicy: { allowedProviders: validProviders, includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' },
       status: 'active',
       favorite: false,
       tags: ai.tags,
       insight: ai.insight,
       answer: ai.answer,
+      sessionSummary: ai.insight,
       createdAt: now,
       updatedAt: now,
     };
@@ -86,27 +96,39 @@ export async function POST(request: Request) {
       {
         id: randomUUID(),
         thinkingId,
+        thinkalongSessionId: thinkingId,
         role: 'user',
         content: thinking.prompt,
         aiProvider,
+        connectionId: selection.connectionId,
+        model: selection.model,
+        contextVersion: contextPacket.version,
         createdAt: now,
       },
       {
         id: randomUUID(),
         thinkingId,
+        thinkalongSessionId: thinkingId,
         role: 'assistant',
         content: ai.answer,
         aiProvider,
+        connectionId: selection.connectionId,
+        model: selection.model,
+        contextVersion: contextPacket.version,
+        executionStatus: 'succeeded',
         createdAt: now,
       },
     ];
 
     db.thinkings.push(thinking);
     db.messages.push(...messages);
+    db.contextSnapshots.push({ id: randomUUID(), userId: auth.user.id, thinkalongSessionId: thinkingId, version: contextPacket.version, provider: aiProvider, connectionId: selection.connectionId, model: selection.model, packet: contextPacket, createdAt: now });
+    recordEvent(db, { id: randomUUID(), userId: auth.user.id, thinkalongSessionId: thinkingId, type: 'model.executed', data: { provider: aiProvider, connectionId: selection.connectionId, model: selection.model, contextVersion: contextPacket.version }, createdAt: now });
     for (const attachment of body.attachments ?? []) {
       db.attachments.push({
         id: randomUUID(),
         thinkingId,
+        thinkalongSessionId: thinkingId,
         type: attachment.type,
         name: attachment.name,
         url: attachment.url,

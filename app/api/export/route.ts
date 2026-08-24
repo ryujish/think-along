@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/auth';
 import { readDb } from '@/lib/server/db';
+import { createProjectExport } from '@/lib/server/project-transfer';
 import type { ExportFormat } from '@/lib/types';
 
-const formats: ExportFormat[] = ['markdown', 'pdf', 'word', 'notion'];
+const formats: ExportFormat[] = ['markdown', 'pdf', 'word', 'notion', 'json'];
 
 export async function POST(request: Request) {
   const auth = await requireUser(request);
@@ -30,17 +31,29 @@ export async function POST(request: Request) {
     );
   }
 
+  if (body.format === 'json') {
+    return NextResponse.json({
+      export: {
+        format: 'json',
+        filename: `${thinking.title}.json`,
+        mimeType: 'application/json',
+        content: JSON.stringify(createProjectExport(db, thinking), null, 2),
+      },
+    });
+  }
+
+  const conversation = db.messages
+    .filter((message) => message.thinkalongSessionId === thinking.thinkalongSessionId && message.role !== 'system')
+    .map((message) => `### ${message.role === 'user' ? '사용자' : `${message.aiProvider ?? thinking.aiProvider} 응답`}\n\n${message.content}`)
+    .join('\n\n');
   const markdown = [
     `# ${thinking.title}`,
     '',
     `- AI: ${thinking.aiProvider}`,
     `- Tags: ${thinking.tags.join(', ')}`,
     '',
-    '## Prompt',
-    thinking.prompt,
-    '',
-    '## Answer',
-    thinking.answer,
+    '## Conversation',
+    conversation,
     '',
     '## Insight',
     thinking.insight ?? '',

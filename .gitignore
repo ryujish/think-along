@@ -37,5 +37,9 @@ CLAUDE.md
 .DS_Store
 Thumbs.db
 
+# Local UI prototype dependencies/build output
+ui-prototype/node_modules/
+ui-prototype/dist/
+
 # Accidental npm output file
 /11.18.0

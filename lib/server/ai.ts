@@ -1,9 +1,9 @@
-import type { AiProvider } from '@/lib/types';
+import type { AiProvider, ContextPacket, ModelCapability, ProviderCatalogItem, ProviderId } from '@/lib/types';
 
 type GenerateThinkingInput = {
   prompt: string;
   provider: AiProvider;
-  context?: string[];
+  context: ContextPacket;
   apiKey?: string;
   model?: string;
 };
@@ -22,27 +22,56 @@ export type AiProviderStatus = {
   requiredEnv: string;
 };
 
+const providerConfig: Array<{
+  id: ProviderId;
+  label: AiProvider;
+  env: string;
+  modelEnv: string;
+  defaultModel: string;
+  models: ModelCapability[];
+}> = [
+  { id: 'openai', label: 'GPT', env: 'OPENAI_API_KEY', modelEnv: 'OPENAI_MODEL', defaultModel: 'gpt-5.6-terra', models: [{ id: 'gpt-5.6-terra', text: true, vision: true, structuredOutput: true, streaming: true }] },
+  { id: 'anthropic', label: 'Claude', env: 'ANTHROPIC_API_KEY', modelEnv: 'ANTHROPIC_MODEL', defaultModel: 'claude-sonnet-5', models: [{ id: 'claude-sonnet-5', text: true, vision: true, files: true, streaming: true }] },
+  { id: 'gemini', label: 'Gemini', env: 'GEMINI_API_KEY', modelEnv: 'GEMINI_MODEL', defaultModel: 'gemini-3.7-flash', models: [{ id: 'gemini-3.7-flash', text: true, vision: true, files: true, streaming: true }] },
+  { id: 'xai', label: 'Grok', env: 'XAI_API_KEY', modelEnv: 'XAI_MODEL', defaultModel: 'grok-4.6', models: [{ id: 'grok-4.6', text: true, vision: true, streaming: true }] },
+  { id: 'moonshot', label: 'Kimi', env: 'MOONSHOT_API_KEY', modelEnv: 'MOONSHOT_MODEL', defaultModel: 'kimi-k3', models: [{ id: 'kimi-k3', text: true, vision: true, streaming: true }, { id: 'kimi-k2.6', text: true, vision: true, streaming: true }] },
+  { id: 'opencode', label: 'OpenCode Zen', env: 'OPENCODE_ZEN_API_KEY', modelEnv: 'OPENCODE_ZEN_MODEL', defaultModel: 'x-preview-f-free', models: [{ id: 'x-preview-f-free', text: true, streaming: true }] },
+];
+
+export function getProviderCatalog(): ProviderCatalogItem[] {
+  return providerConfig.map((provider) => {
+    const model = process.env[provider.modelEnv] || provider.defaultModel;
+    return {
+      id: provider.id,
+      label: provider.label,
+      connections: [{
+        id: `${provider.id}:environment`,
+        provider: provider.id,
+        name: '서버 환경 계정',
+        authKind: 'api_key',
+        credentialRef: provider.env,
+        status: process.env[provider.env] ? 'available' : 'unavailable',
+        models: provider.models.some((item) => item.id === model) ? provider.models : [{ id: model, text: true }],
+      }],
+    };
+  });
+}
+
 export function getAiProviderStatuses(): AiProviderStatus[] {
-  return [
-    {
-      provider: 'GPT',
-      connected: Boolean(process.env.OPENAI_API_KEY),
-      model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-      requiredEnv: 'OPENAI_API_KEY',
-    },
-    {
-      provider: 'Claude',
-      connected: Boolean(process.env.ANTHROPIC_API_KEY),
-      model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest',
-      requiredEnv: 'ANTHROPIC_API_KEY',
-    },
-    {
-      provider: 'Gemini',
-      connected: Boolean(process.env.GEMINI_API_KEY),
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-      requiredEnv: 'GEMINI_API_KEY',
-    },
-  ];
+  return getProviderCatalog().map((provider) => {
+    const connection = provider.connections[0];
+    return { provider: provider.label, connected: connection.status === 'available', model: connection.models[0].id, requiredEnv: connection.credentialRef };
+  });
+}
+
+export function resolveProviderSelection(provider: AiProvider, connectionId?: string, model?: string) {
+  const catalog = getProviderCatalog().find((item) => item.label === provider)!;
+  const fallback = catalog.connections[0];
+  return {
+    provider,
+    connectionId: connectionId?.trim() || fallback.id,
+    model: model?.trim() || fallback.models[0].id,
+  };
 }
 
 function localAiResult(input: GenerateThinkingInput): AiResult {
@@ -52,6 +81,9 @@ function localAiResult(input: GenerateThinkingInput): AiResult {
     GPT: '실행 계획 중심',
     Claude: '맥락 분석 중심',
     Gemini: '자료 탐색 중심',
+    Grok: '실시간 추론 중심',
+    Kimi: '긴 문맥과 에이전트 추론 중심',
+    'OpenCode Zen': '검증된 다중 모델 전환 중심',
   }[input.provider];
 
   return {
@@ -92,7 +124,90 @@ function parseOpenAiText(text: string, input: GenerateThinkingInput): AiResult {
 export async function generateThinking(input: GenerateThinkingInput): Promise<AiResult> {
   if (input.provider === 'Claude') return generateWithClaude(input);
   if (input.provider === 'Gemini') return generateWithGemini(input);
+  if (input.provider === 'Grok') return generateWithGrok(input);
+  if (input.provider === 'Kimi') return generateWithCompatibleChat(input, 'https://api.moonshot.ai/v1/chat/completions', process.env.MOONSHOT_API_KEY, process.env.MOONSHOT_MODEL || 'kimi-k3');
+  if (input.provider === 'OpenCode Zen') return generateWithOpenCodeZen(input);
   return generateWithOpenAi(input);
+}
+
+async function generateWithGrok(input: GenerateThinkingInput): Promise<AiResult> {
+  const apiKey = input.apiKey || process.env.XAI_API_KEY;
+  if (!apiKey) return localAiResult(input);
+  const response = await fetch('https://api.x.ai/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: input.model || process.env.XAI_MODEL || 'grok-4.6',
+      input: [
+        'You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.',
+        input.context.system,
+        JSON.stringify(input.context),
+      ].join('\n\n'),
+    }),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    if (response.status === 403) throw new Error('xAI API Key에 Grok 모델 또는 Responses API 권한이 없습니다. xAI Console에서 모델·엔드포인트 권한과 팀 결제 상태를 확인해주세요.');
+    throw new Error(payload?.error?.message ?? `Grok API 요청에 실패했습니다. (${response.status})`);
+  }
+  const data = (await response.json()) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
+  const text = data.output_text ?? data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text ?? '';
+  return text ? parseOpenAiText(text, input) : localAiResult(input);
+}
+
+async function generateWithCompatibleChat(input: GenerateThinkingInput, url: string, environmentKey: string | undefined, defaultModel: string): Promise<AiResult> {
+  const apiKey = input.apiKey || environmentKey;
+  if (!apiKey) return localAiResult(input);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: input.model || defaultModel,
+      messages: [
+        { role: 'system', content: ['You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.', input.context.system].join('\n\n') },
+        { role: 'user', content: JSON.stringify(input.context) },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(payload?.error?.message ?? `${input.provider} API 요청에 실패했습니다. (${response.status})`);
+  }
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const text = data.choices?.[0]?.message?.content ?? '';
+  return text ? parseOpenAiText(text, input) : localAiResult(input);
+}
+
+async function generateWithOpenCodeZen(input: GenerateThinkingInput): Promise<AiResult> {
+  const apiKey = input.apiKey || process.env.OPENCODE_ZEN_API_KEY;
+  if (!apiKey) return localAiResult(input);
+
+  const model = input.model || process.env.OPENCODE_ZEN_MODEL || 'x-preview-f-free';
+  const prompt = [
+    'You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.',
+    input.context.system,
+    JSON.stringify(input.context),
+  ].join('\n\n');
+  const usesResponses = /^(gpt-|grok-|muse-spark)/.test(model);
+  const response = await fetch(usesResponses ? 'https://opencode.ai/zen/v1/responses' : 'https://opencode.ai/zen/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(usesResponses
+      ? { model, input: prompt }
+      : { model, messages: [{ role: 'user', content: prompt }] }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    const message = payload?.error?.message ?? `OpenCode Zen API 요청에 실패했습니다. (${response.status})`;
+    throw new Error(/Endpoint is unavailable|Upstream request failed/i.test(message)
+      ? '선택한 OpenCode Zen 모델을 일시적으로 사용할 수 없습니다. Big Pickle 또는 Ox Alpha로 바꾸어 다시 시도해주세요.'
+      : message);
+  }
+
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
+  const text = data.output_text ?? data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text ?? data.choices?.[0]?.message?.content ?? '';
+  return text ? parseOpenAiText(text, input) : localAiResult(input);
 }
 
 async function generateWithOpenAi(input: GenerateThinkingInput): Promise<AiResult> {
@@ -106,19 +221,18 @@ async function generateWithOpenAi(input: GenerateThinkingInput): Promise<AiResul
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: input.model || process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+      model: input.model || process.env.OPENAI_MODEL || 'gpt-5.6-terra',
       input: [
         {
           role: 'system',
-          content:
+          content: [
             'You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.',
+            input.context.system,
+          ].join('\n\n'),
         },
         {
           role: 'user',
-          content: JSON.stringify({
-            prompt: input.prompt,
-            context: input.context ?? [],
-          }),
+          content: JSON.stringify(input.context),
         },
       ],
       text: {
@@ -130,7 +244,10 @@ async function generateWithOpenAi(input: GenerateThinkingInput): Promise<AiResul
   });
 
   if (!response.ok) {
-    if (input.apiKey) throw new Error('등록한 OpenAI API Key로 연결하지 못했습니다.');
+    if (input.apiKey) {
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      throw new Error(payload?.error?.message ?? `OpenAI API 요청에 실패했습니다. (${response.status})`);
+    }
     return localAiResult(input);
   }
 
@@ -158,21 +275,26 @@ async function generateWithClaude(input: GenerateThinkingInput): Promise<AiResul
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: input.model || process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest',
+      model: input.model || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
       max_tokens: 900,
-      system:
+      system: [
         'You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.',
+        input.context.system,
+      ].join('\n\n'),
       messages: [
         {
           role: 'user',
-          content: JSON.stringify({ prompt: input.prompt, context: input.context ?? [] }),
+          content: JSON.stringify(input.context),
         },
       ],
     }),
   });
 
   if (!response.ok) {
-    if (input.apiKey) throw new Error('등록한 Anthropic API Key로 연결하지 못했습니다.');
+    if (input.apiKey) {
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      throw new Error(payload?.error?.message ?? `Claude API 요청에 실패했습니다. (${response.status})`);
+    }
     return localAiResult(input);
   }
 
@@ -185,7 +307,7 @@ async function generateWithGemini(input: GenerateThinkingInput): Promise<AiResul
   const apiKey = input.apiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) return localAiResult(input);
 
-  const model = input.model || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = input.model || process.env.GEMINI_MODEL || 'gemini-3.7-flash';
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -201,7 +323,8 @@ async function generateWithGemini(input: GenerateThinkingInput): Promise<AiResul
               {
                 text: [
                   'You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.',
-                  JSON.stringify({ prompt: input.prompt, context: input.context ?? [] }),
+                  input.context.system,
+                  JSON.stringify(input.context),
                 ].join('\n'),
               },
             ],
@@ -212,7 +335,13 @@ async function generateWithGemini(input: GenerateThinkingInput): Promise<AiResul
   );
 
   if (!response.ok) {
-    if (input.apiKey) throw new Error('등록한 Gemini API Key로 연결하지 못했습니다.');
+    if (input.apiKey) {
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const message = payload?.error?.message ?? `Gemini API 요청에 실패했습니다. (${response.status})`;
+      throw new Error(message.includes('high demand')
+        ? 'Gemini 3.7 사용량이 일시적으로 많습니다. 잠시 후 다시 보내거나 Gemini 3.6 Flash를 선택해주세요.'
+        : message);
+    }
     return localAiResult(input);
   }
 

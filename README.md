@@ -2,6 +2,15 @@
 
 This workspace contains the product-oriented Think Along app.
 
+## Architecture Work
+
+This copy is the active development Work for the unified-session architecture.
+
+- Permanent product context: [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md)
+- P0 architecture and implementation plan: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Read-only source baseline: `/Users/choisunghoon/Documents/Aitime/think-along`
+- Active Work: `/Users/choisunghoon/Documents/Aitime/think-along_start`
+
 ## Run
 
 ```bash

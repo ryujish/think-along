@@ -2,29 +2,29 @@
 
 import {
   Apple,
-  Archive,
   Bot,
   Calendar,
   CalendarCheck2,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
   Clock3,
   Compass,
-  Download,
   Eye,
   EyeOff,
   FileText,
+  Folder,
   Lightbulb,
   Mail,
   Mic,
   MoreVertical,
   Plus,
+  Pencil,
   Search,
   Send,
   Settings,
-  Share2,
   ShieldCheck,
   Moon,
   Sun,
@@ -35,7 +35,7 @@ import {
   User,
   WandSparkles,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme } from '@/lib/theme-context';
 
 type Screen =
@@ -47,6 +47,7 @@ type Screen =
   | 'interests'
   | 'provider'
   | 'home'
+  | 'thinking'
   | 'detail'
   | 'timeline'
   | 'search'
@@ -56,7 +57,7 @@ type Screen =
   | 'providerAccounts'
   | 'accountEditor';
 
-type Provider = 'GPT' | 'Claude' | 'Gemini';
+type Provider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen';
 
 type AppUser = {
   id: string;
@@ -77,6 +78,14 @@ type ProductThinking = {
   answer: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type ConversationMessage = {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  aiProvider?: Provider;
+  createdAt: string;
 };
 
 type ProductInsight = {
@@ -121,31 +130,58 @@ const providers: { name: Provider; helper: string; icon: typeof Bot }[] = [
   { name: 'GPT', helper: '빠른 정리와 실행 계획', icon: Bot },
   { name: 'Claude', helper: '긴 문맥과 깊은 분석', icon: WandSparkles },
   { name: 'Gemini', helper: '자료 탐색과 멀티모달', icon: Sparkles },
+  { name: 'Grok', helper: 'xAI 실시간 추론', icon: Bot },
+  { name: 'Kimi', helper: 'Moonshot 장문·에이전트 추론', icon: WandSparkles },
+  { name: 'OpenCode Zen', helper: '검증된 모델과 무료 모델 전환', icon: Compass },
 ];
 
 const providerModels: Record<Provider, string[]> = {
-  GPT: ['gpt-5', 'gpt-5-mini', 'gpt-4.1'],
-  Claude: ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest', 'claude-3-opus-latest'],
-  Gemini: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
+  GPT: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+  Claude: ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'],
+  Gemini: ['gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'],
+  Grok: ['grok-4.6', 'grok-4.5', 'grok-4.1-fast', 'grok-4-fast'],
+  Kimi: ['kimi-k3', 'kimi-k2.6', 'kimi-k2.5'],
+  'OpenCode Zen': ['x-preview-f-free', 'big-pickle'],
+};
+
+const featuredZenModels = [
+  { label: 'Ox Alpha', model: 'x-preview-f-free' },
+  { label: 'Big Pickle', model: 'big-pickle' },
+];
+
+const providerApiKeyUrls: Record<Provider, string> = {
+  GPT: 'https://platform.openai.com/api-keys',
+  Claude: 'https://console.anthropic.com/settings/keys',
+  Gemini: 'https://aistudio.google.com/app/apikey',
+  Grok: 'https://console.x.ai/team/default/api-keys',
+  Kimi: 'https://platform.kimi.ai/console/api-keys',
+  'OpenCode Zen': 'https://opencode.ai/auth',
 };
 
 const providerLabels: Record<Provider, string> = {
   GPT: 'GPT (OpenAI)',
   Claude: 'Claude (Anthropic)',
   Gemini: 'Gemini (Google)',
+  Grok: 'Grok (xAI)',
+  Kimi: 'Kimi (Moonshot AI)',
+  'OpenCode Zen': 'OpenCode Zen',
 };
 
 const providerAccent: Record<Provider, { bg: string; text: string; short: string }> = {
   GPT: { bg: 'bg-[#10a37f]', text: 'text-[#10a37f]', short: 'GPT' },
   Claude: { bg: 'bg-[#e68652]', text: 'text-[#e68652]', short: 'Cl' },
   Gemini: { bg: 'bg-[#4f8df7]', text: 'text-[#4f8df7]', short: 'Ge' },
+  Grok: { bg: 'bg-[#171717]', text: 'text-[#d4d4d4]', short: 'Gr' },
+  Kimi: { bg: 'bg-[#7657ff]', text: 'text-[#7657ff]', short: 'Ki' },
+  'OpenCode Zen': { bg: 'bg-[#6d5cff]', text: 'text-[#6d5cff]', short: 'OZ' },
 };
 
-function validateApiKey(provider: Provider, apiKey: string) {
-  const trimmed = apiKey.trim();
-  if (provider === 'GPT') return /^sk-[A-Za-z0-9_-]{12,}$/.test(trimmed);
-  if (provider === 'Claude') return /^sk-ant-[A-Za-z0-9_-]{12,}$/.test(trimmed);
-  return trimmed.length >= 16;
+function providersByRegistration(accounts: AiAccount[]) {
+  const order = new Map<Provider, number>();
+  accounts.forEach((account, index) => {
+    if (!order.has(account.provider)) order.set(account.provider, index);
+  });
+  return [...providers].sort((a, b) => (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity));
 }
 
 function maskApiKey(apiKey: string) {
@@ -254,7 +290,7 @@ function StatusBar() {
     <div className="flex h-9 items-center justify-between px-4 text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
       <span>9:41</span>
       <div className="flex items-center gap-2">
-        <button onClick={toggleTheme} className="grid h-7 w-7 place-items-center rounded-full" style={{ color: 'var(--text-secondary)' }}>
+        <button aria-label="화면 모드 전환" onClick={toggleTheme} className="grid h-7 w-7 place-items-center rounded-full" style={{ color: 'var(--text-secondary)' }}>
           {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
         </button>
         <div className="flex items-center gap-1.5">
@@ -370,7 +406,7 @@ function AppButton({
 }) {
   const styles = {
     primary:
-      'text-white shadow-[0_10px_24px_var(--shadow-glow)]',
+      'text-[#021b12] shadow-[0_10px_24px_var(--shadow-glow)]',
     secondary: 'shadow-sm',
     ghost: 'bg-transparent',
     danger: 'bg-transparent',
@@ -405,6 +441,52 @@ function AppButton({
   );
 }
 
+function ModelSelect({ value, options, onChange, compact = false, dropUp = false }: {
+  value: string;
+  options: string[];
+  onChange: (model: string) => void;
+  compact?: boolean;
+  dropUp?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative mt-1" onBlur={(event) => !event.currentTarget.contains(event.relatedTarget) && setOpen(false)}>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className={`flex w-full items-center justify-between rounded-xl border px-4 font-extrabold ${compact ? 'h-10' : 'h-12'}`}
+        style={{ borderColor: open ? 'var(--accent-green)' : 'var(--border-primary)', backgroundColor: '#050b0d', color: 'white', fontSize: compact ? 12 : 15 }}
+      >
+        {value}
+        <ChevronDown className={open ? 'rotate-180' : ''} size={18} style={{ color: 'var(--accent-green)' }} />
+      </button>
+      {open && (
+        <div role="listbox" className={`absolute left-0 z-50 w-full overflow-hidden rounded-xl border p-1 shadow-2xl ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`} style={{ borderColor: 'var(--accent-green)', backgroundColor: '#050b0d' }}>
+          {options.map((model) => {
+            const selected = model === value;
+            return (
+              <button
+                key={model}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => { onChange(model); setOpen(false); }}
+                className="flex h-10 w-full items-center rounded-lg px-3 text-left font-bold"
+                style={{ backgroundColor: selected ? 'var(--accent-green)' : 'transparent', color: selected ? '#021b12' : 'white', fontSize: 12 }}
+              >
+                {model}{selected && <Check className="ml-auto" size={15} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AppHeader({
   title,
   onBack,
@@ -420,7 +502,7 @@ function AppHeader({
     <header className="flex h-[54px] items-center justify-between px-5" style={{ color: 'var(--text-primary)' }}>
       <div className="flex min-w-0 items-center gap-3">
         {onBack ? (
-          <button onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full" style={{ color: 'var(--text-primary)' }}>
+          <button aria-label="뒤로가기" onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full" style={{ color: 'var(--text-primary)' }}>
             <ChevronLeft size={20} />
           </button>
         ) : (
@@ -492,11 +574,130 @@ function BottomNavigation({ screen, setScreen }: { screen: Screen; setScreen: (s
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="relative h-[844px] w-full max-w-[390px] overflow-hidden rounded-[20px] shadow-[0_18px_80px_rgba(0,0,0,0.36)]"
+      className="relative h-[934px] w-full max-w-[426px] overflow-hidden rounded-[20px] shadow-[0_18px_80px_rgba(0,0,0,0.36)]"
       style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-secondary)' }}
     >
       <StatusBar />
       {children}
+    </div>
+  );
+}
+
+function ProjectHomeScreen({
+  selectedProvider,
+  setSelectedProvider,
+  thinkings,
+  aiAccounts,
+  onSelectAccount,
+  selectedModel,
+  onSelectModel,
+  setScreen,
+  onSelectThinking,
+}: {
+  selectedProvider: Provider;
+  setSelectedProvider: (provider: Provider) => void;
+  thinkings: ProductThinking[];
+  aiAccounts: AiAccount[];
+  onSelectAccount: (accountId: string) => void;
+  selectedModel: string | null;
+  onSelectModel: (model: string | null) => void;
+  setScreen: (screen: Screen) => void;
+  onSelectThinking: (thinking: ProductThinking) => void;
+}) {
+  const current = thinkings[0];
+  const orderedAccounts = [...aiAccounts].sort((a, b) => Number(b.provider === selectedProvider) - Number(a.provider === selectedProvider));
+  const selectedAccount = aiAccounts.find((item) => item.provider === selectedProvider && item.isDefault);
+  const selectedProviderModel = selectedModel ?? selectedAccount?.model ?? providerModels[selectedProvider][0];
+  const selectedProviderModels = Array.from(new Set([selectedProviderModel, ...providerModels[selectedProvider]]));
+  const formatUpdatedAt = (value: string) => new Intl.DateTimeFormat('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+  const recent = thinkings.length > 0
+    ? thinkings.slice(0, 3).map((thinking) => ({
+      title: thinking.title,
+      detail: thinking.prompt,
+      time: formatUpdatedAt(thinking.updatedAt),
+      thinking,
+    }))
+    : [
+      { title: '타겟 페르소나와 주요 페인포인트 정리', detail: '사용자 리서치 기반 인사이트 도출', time: '1시간 전', thinking: undefined },
+      { title: '경쟁사 포지셔닝과 차별점 분석', detail: '시장 반응과 강점 정리', time: '어제', thinking: undefined },
+      { title: '메시지 전략 초안 수립', detail: '핵심 메시지와 톤앤매너 정의', time: '2일 전', thinking: undefined },
+    ];
+  const continueThinking = () => current ? onSelectThinking(current) : setScreen('detail');
+
+  return (
+    <div className="project-home-shell">
+      <div className="project-home-scroll">
+        <header className="project-home-header">
+          <h1>Think Along</h1>
+          <button onClick={() => setScreen('timeline')}><Settings size={21} /> 프로젝트</button>
+        </header>
+        <p className="project-current"><span />현재 진행 중인 프로젝트</p>
+        <section className="project-title">
+          <span className="project-folder"><Folder size={32} /></span>
+          <div><h2>{current?.title ?? '새 Thinking'} <Pencil size={16} /></h2><p>{current?.prompt ?? '새로운 생각을 시작해보세요.'}</p></div>
+        </section>
+        <section className="project-summary-card">
+          <div className="project-summary-row">
+            <Check size={18} />
+            <div><b>마지막 AI 응답</b><strong>{current?.answer ?? '아직 저장된 응답이 없습니다.'}</strong><small>{current ? formatUpdatedAt(current.updatedAt) : '방금 전'}</small></div>
+            <span className="project-round-icon"><FileText size={19} /></span>
+          </div>
+          <div className="project-summary-divider" />
+          <button className="project-summary-row project-next" onClick={continueThinking}>
+            <Circle size={18} />
+            <div><b>다음에 이어갈 대화</b><strong>{current ? `${current.title} 계속하기` : '첫 Thinking 시작하기'}</strong></div>
+            <ChevronRight size={20} />
+          </button>
+        </section>
+        <div className="project-actions">
+          <button onClick={() => setScreen('thinking')}><Plus size={22} /> 새 Thinking</button>
+        </div>
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {orderedAccounts.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { setSelectedProvider(item.provider); onSelectAccount(item.id); onSelectModel(null); }}
+              className="relative h-11 shrink-0 rounded-xl px-4 text-[10px] font-extrabold"
+              style={{ border: selectedProvider === item.provider && item.isDefault ? '1px solid var(--accent-green)' : '1px solid var(--border-primary)', backgroundColor: selectedProvider === item.provider && item.isDefault ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: selectedProvider === item.provider && item.isDefault ? '#021b12' : 'var(--text-primary)' }}
+            >
+              {item.provider}
+            </button>
+          ))}
+          {providers.filter((provider) => !aiAccounts.some((item) => item.provider === provider.name)).map((provider) => (
+            provider.name === 'OpenCode Zen' ? null :
+            <button key={provider.name} onClick={() => { setSelectedProvider(provider.name); setScreen('aiAccounts'); }} className="h-11 shrink-0 rounded-xl px-4 text-[10px] font-extrabold" style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+              + {provider.name}
+            </button>
+          ))}
+        </div>
+        <label className="mt-2 block text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>
+          하위 모델
+          <ModelSelect value={selectedProviderModel} options={selectedProviderModels} onChange={onSelectModel} />
+        </label>
+        <section className="project-recent">
+          <h3>최근 Conversation</h3>
+          <div>
+            {recent.map((item) => (
+              <button key={item.title} onClick={() => item.thinking ? onSelectThinking(item.thinking) : setScreen('detail')}>
+                <span className="project-round-icon"><FileText size={18} /></span>
+                <span><b>{item.title}</b><small>{item.detail}</small></span>
+                <time>{item.time}</time><ChevronRight size={19} />
+              </button>
+            ))}
+            <button className="project-all" onClick={() => setScreen('timeline')}>모든 Conversation 보기 <ChevronRight size={18} /></button>
+          </div>
+        </section>
+      </div>
+      <nav className="project-bottom-nav">
+        <button className="active" onClick={() => setScreen('home')}><Compass size={23} /><span>Journey</span></button>
+        <button onClick={() => setScreen('insight')}><Lightbulb size={23} /><span>Insight</span></button>
+        <button onClick={() => setScreen('profile')}><User size={23} /><span>Profile</span></button>
+      </nav>
     </div>
   );
 }
@@ -732,9 +933,11 @@ function HomeScreen({
   isSaving,
   aiConnections,
   aiAccounts,
-  onRefreshAiConnections,
   onOpenAiSetup,
+  requestError,
   forceEmpty = false,
+  selectedModel,
+  onSelectModel,
 }: {
   selectedProvider: Provider;
   setSelectedProvider: (provider: Provider) => void;
@@ -747,11 +950,12 @@ function HomeScreen({
   isSaving: boolean;
   aiConnections: AiConnection[];
   aiAccounts: AiAccount[];
-  onRefreshAiConnections: () => Promise<void>;
   onOpenAiSetup: (provider: Provider) => void;
+  requestError: string;
   forceEmpty?: boolean;
+  selectedModel: string | null;
+  onSelectModel: (model: string | null) => void;
 }) {
-  const [showAiMore, setShowAiMore] = useState(false);
   const cards: ThinkingCard[] = thinkings.slice(0, 3).map((thinking) => ({
     id: thinking.id,
     title: thinking.title,
@@ -761,10 +965,9 @@ function HomeScreen({
     percent: 100,
     favorite: thinking.favorite,
   }));
-  const activeConnection = aiConnections.find((item) => item.provider === selectedProvider);
-  const activeAccount = defaultAccountFor(selectedProvider, aiAccounts);
   const canUseSelectedProvider = hasProviderAccess(selectedProvider, aiAccounts, aiConnections);
   const isFirstRun = forceEmpty || thinkings.length === 0;
+  const visibleProviders = providersByRegistration(aiAccounts).sort((a, b) => Number(b.name === selectedProvider) - Number(a.name === selectedProvider));
 
   return (
     <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
@@ -775,7 +978,7 @@ function HomeScreen({
           <br />
             무엇을 도와드릴까요?
           </h2>
-          <button onClick={() => setScreen('profile')} className="h-12 w-12 overflow-hidden rounded-full shadow-inner" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+          <button aria-label="프로필 열기" onClick={() => setScreen('profile')} className="h-12 w-12 overflow-hidden rounded-full shadow-inner" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <span className="block h-full w-full bg-[radial-gradient(circle_at_50%_28%,#f3c7ab_0_19%,transparent_20%),linear-gradient(145deg,#111827_0_42%,#64748b_43%_100%)]" />
           </button>
         </div>
@@ -830,112 +1033,48 @@ function HomeScreen({
               <Mic size={20} />
             </button>
           </div>
-          <div className="mt-3 grid grid-cols-[70px_1fr_1fr_70px] gap-3">
-            {providers.map((provider) => {
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {visibleProviders.map((provider) => {
               const active = selectedProvider === provider.name;
-              const connected = hasProviderAccess(provider.name, aiAccounts, aiConnections);
 
               return (
                 <button
                   key={provider.name}
-                  onClick={() => setSelectedProvider(provider.name)}
-                  className={`relative h-10 rounded-xl text-[12px] font-extrabold`}
+                  onClick={() => { setSelectedProvider(provider.name); onSelectModel(null); }}
+                  className="relative h-10 shrink-0 rounded-xl px-4 text-[10px] font-extrabold"
                   style={{
                     border: active ? '1px solid var(--accent-green)' : '1px solid transparent',
-                    backgroundColor: active ? 'var(--accent-green-soft)' : 'var(--bg-tertiary)',
-                    color: active ? 'var(--accent-green)' : 'var(--text-primary)',
+                    backgroundColor: active ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                    color: active ? '#021b12' : 'var(--text-primary)',
                   }}
                 >
                   {provider.name}
-                  {connected && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />}
                 </button>
               );
               })}
-            <button
-              onClick={() => {
-                setShowAiMore((current) => !current);
-                void onRefreshAiConnections();
-              }}
-              className="h-10 rounded-xl text-[12px] font-extrabold"
-              style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-            >
-              More+
-            </button>
-          </div>
-          {showAiMore && (
-            <div className="mt-3 rounded-xl p-3" style={{ border: '1px solid var(--border-primary)', backgroundColor: 'rgba(0,0,0,0.2)' }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13px] font-black" style={{ color: 'var(--text-primary)' }}>AI 연결</p>
-                  <p className="mt-0.5 text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                    {activeAccount
-                      ? `${activeAccount.name} 계정 사용 중`
-                      : activeConnection?.connected
-                        ? `${selectedProvider} 서버 키 연결 중`
-                        : `${selectedProvider} API 키 필요`}
-                  </p>
-                </div>
-                <button className="h-8 rounded-lg px-3 text-[11px] font-extrabold shadow-sm" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
-                  새로고침
-                </button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {providers.map((provider) => {
-                  const status = aiConnections.find((item) => item.provider === provider.name);
-                  const accountCount = aiAccounts.filter((account) => account.provider === provider.name).length;
-                  const active = selectedProvider === provider.name;
-                  const connected = accountCount > 0 || Boolean(status?.connected);
-
-                  return (
-                    <button
-                      key={provider.name}
-                      onClick={() => setSelectedProvider(provider.name)}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left`}
-                      style={{
-                        border: active ? '1px solid var(--accent-green)' : '1px solid transparent',
-                        backgroundColor: 'var(--bg-tertiary)',
-                      }}
-                    >
-                      <span>
-                        <span className="block text-[12px] font-black">{provider.name}</span>
-                        <span className="block text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                          {accountCount > 0 ? `${accountCount}개 계정 등록됨` : status?.model ?? '모델 확인 중'}
-                        </span>
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-1 text-[10px] font-black`}
-                        style={{
-                          backgroundColor: connected ? 'var(--accent-green-soft)' : 'rgba(251,191,36,0.15)',
-                          color: connected ? 'var(--accent-green)' : '#fbbf24',
-                        }}
-                      >
-                        {connected ? '연결됨' : status?.requiredEnv ?? '확인 중'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                onClick={() => onOpenAiSetup(selectedProvider)}
-                className="mt-3 h-10 w-full rounded-lg text-[13px] font-black text-white"
-                style={{ backgroundColor: 'var(--accent-green)' }}
-              >
-                {activeAccount ? '계정 추가하기' : 'API Key 등록하기'}
+            {featuredZenModels.map((item) => (
+              <button key={item.model} onClick={() => { setSelectedProvider('OpenCode Zen'); onSelectModel(item.model); }} className="relative h-10 shrink-0 rounded-xl px-4 text-[10px] font-extrabold" style={{ border: selectedProvider === 'OpenCode Zen' && selectedModel === item.model ? '1px solid var(--accent-green)' : '1px solid transparent', backgroundColor: selectedProvider === 'OpenCode Zen' && selectedModel === item.model ? 'var(--accent-green-soft)' : 'var(--bg-tertiary)', color: selectedProvider === 'OpenCode Zen' && selectedModel === item.model ? 'var(--accent-green)' : 'var(--text-primary)' }}>
+                {item.label}
               </button>
-            </div>
-          )}
+            ))}
+          </div>
           <button
             onClick={onCreateThinking}
             disabled={isSaving || !canUseSelectedProvider}
             className="relative mt-5 flex h-11 w-full items-center justify-center rounded-lg px-5 text-[15px] font-bold shadow-[0_10px_24px_var(--shadow-glow)] disabled:opacity-35"
             style={{
               backgroundColor: canUseSelectedProvider && !isSaving ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-              color: canUseSelectedProvider && !isSaving ? 'white' : 'var(--text-tertiary)',
+              color: canUseSelectedProvider && !isSaving ? '#021b12' : 'var(--text-tertiary)',
             }}
           >
             {isSaving ? '저장 중...' : '보내기'}
             <Send className="absolute right-5" size={22} />
           </button>
+          {requestError && (
+            <p className="mt-3 rounded-lg px-3 py-2 text-[12px] font-bold leading-5 text-red-300" style={{ border: '1px solid rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.12)' }}>
+              {requestError}
+            </p>
+          )}
         </section>
 
         {cards.length > 0 ? (
@@ -1016,7 +1155,7 @@ function HomeScreen({
             action={
               <button
                 onClick={() => setPrompt('오늘 고민하고 있는 일을 정리해줘')}
-                className="h-10 w-full rounded-lg text-[13px] font-black text-white"
+                className="h-10 w-full rounded-lg text-[13px] font-black text-[#021b12]"
                 style={{ backgroundColor: 'var(--accent-green)' }}
               >
                 Start Thinking →
@@ -1063,35 +1202,95 @@ function HomeScreen({
 function DetailScreen({
   prompt,
   selectedProvider,
+  setSelectedProvider,
   setScreen,
   continueText,
   setContinueText,
   selectedThinking,
+  conversationMessages,
   onContinueThinking,
+  onDeleteThinking,
   isSaving,
+  aiAccounts,
+  selectedModel,
+  onSelectModel,
+  onSelectAccount,
 }: {
   prompt: string;
   selectedProvider: Provider;
+  setSelectedProvider: (provider: Provider) => void;
   setScreen: (screen: Screen) => void;
   continueText: string;
   setContinueText: (value: string) => void;
   selectedThinking: ProductThinking | null;
+  conversationMessages: ConversationMessage[];
   onContinueThinking: () => Promise<void>;
+  onDeleteThinking: (thinkingId: string) => Promise<void>;
   isSaving: boolean;
+  aiAccounts: AiAccount[];
+  selectedModel: string | null;
+  onSelectModel: (model: string | null) => void;
+  onSelectAccount: (accountId: string) => void;
 }) {
+  const [showMenu, setShowMenu] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const orderedAccounts = [...aiAccounts].sort((a, b) => Number(b.provider === selectedProvider && b.isDefault) - Number(a.provider === selectedProvider && a.isDefault));
+  const selectedAccount = aiAccounts.find((account) => account.provider === selectedProvider && account.isDefault);
+  const selectedProviderModel = selectedModel ?? selectedAccount?.model ?? providerModels[selectedProvider][0];
+  const selectedProviderModels = Array.from(new Set([selectedProviderModel, ...providerModels[selectedProvider]]));
   const activeThinking = selectedThinking ?? {
     id: 'demo',
-    title: prompt ? '새 Thinking' : 'B2B AI 메모 앱 사업계획서',
-    prompt: prompt || 'B2B AI 메모 앱의 초기 사업계획서 구조를 잡아줘',
+    title: prompt ? '새 Thinking' : '마케팅 전략',
+    prompt: prompt || '채널별 메시지 전략과 KPI 설정을 구체화하기',
     aiProvider: selectedProvider,
     favorite: false,
-    tags: ['사업', 'MVP', 'Lean Canvas', 'Startup'],
-    insight: '사업 아이디어를 실행 계획으로 전환하려는 패턴이 강합니다.',
+    tags: ['마케팅', '메시지', 'KPI'],
+    insight: '브랜드 성장 목표를 채널별 실행 지표로 구체화하는 단계입니다.',
     answer:
-      '초기 전략은 1인 창업자와 소규모 팀을 대상으로 한 Thinking 저장소입니다. 핵심 가치는 질문 이력, Continue, 장기 Insight이며 MVP는 인증, Thinking 생성, Timeline, Insight 리포트로 시작하는 것이 좋습니다.',
+      '우선 타겟 고객의 핵심 문제를 기준으로 채널별 메시지를 나누고, 도달률·전환율·획득 비용을 핵심 KPI로 연결해 검증하는 것이 좋습니다.',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   } satisfies ProductThinking;
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+  }, [conversationMessages.length]);
+
+  const menuItems = [
+    {
+      label: 'Share',
+      action: async () => {
+        if (navigator.share) await navigator.share({ title: activeThinking.title, text: activeThinking.answer });
+        else await navigator.clipboard.writeText(window.location.href);
+      },
+    },
+    {
+      label: 'Markdown으로 내보내기',
+      action: async () => {
+        if (!selectedThinking) return;
+        const payload = await apiJson<{ export: { filename: string; mimeType: string; content: string } }>('/api/export', {
+          method: 'POST',
+          body: JSON.stringify({ thinkingId: selectedThinking.id, format: 'markdown' }),
+        });
+        const url = URL.createObjectURL(new Blob([payload.export.content], { type: payload.export.mimeType }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = payload.export.filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      },
+    },
+    { label: 'Journey에서 보기', action: () => setScreen('timeline') },
+    { label: '메인으로 돌아가기', action: () => setScreen('home') },
+    {
+      label: 'Delete',
+      danger: true,
+      action: async () => {
+        if (selectedThinking && window.confirm('현재 보고 있는 대화를 삭제할까요?')) await onDeleteThinking(selectedThinking.id);
+      },
+    },
+  ];
 
   return (
     <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
@@ -1099,12 +1298,37 @@ function DetailScreen({
         title="Thinking Detail"
         onBack={() => setScreen('home')}
         right={
-          <button className="grid h-9 w-9 place-items-center rounded-full" style={{ border: '1px solid var(--border-primary)' }}>
-            <MoreVertical size={19} />
-          </button>
+          <div className="relative">
+            <button
+              aria-label="Thinking 메뉴"
+              aria-expanded={showMenu}
+              onClick={() => setShowMenu((current) => !current)}
+              className="grid h-9 w-9 place-items-center rounded-full"
+              style={{ border: '1px solid var(--border-primary)' }}
+            >
+              <MoreVertical size={19} />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-xl shadow-xl" style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-elevated)' }}>
+                {menuItems.map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => {
+                      setShowMenu(false);
+                      void item.action();
+                    }}
+                    className="block h-11 w-full px-4 text-left text-[13px] font-bold"
+                    style={{ borderBottom: item.label === 'Delete' ? undefined : '1px solid var(--border-primary)', color: item.danger ? '#fb7185' : undefined }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         }
       />
-      <div className="flex-1 overflow-y-auto px-5 pb-5 pt-2">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 pb-5 pt-2">
         <section>
           <div className="flex items-center gap-2 text-[12px] font-bold" style={{ color: 'var(--accent-green)' }}>
             <Bot size={15} /> {activeThinking.aiProvider} · 저장됨
@@ -1114,14 +1338,6 @@ function DetailScreen({
         </section>
 
         <section className="mt-4 space-y-3">
-          <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-            <p className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>Conversation</p>
-            <p className="mt-2 text-[14px] font-semibold leading-6">{activeThinking.prompt}</p>
-          </div>
-          <div className="rounded-xl p-4" style={{ border: '1px solid color-mix(in srgb, var(--accent-green) 30%, transparent)', backgroundColor: 'var(--accent-green-soft)' }}>
-            <p className="text-[12px] font-bold" style={{ color: 'var(--accent-green)' }}>AI Answer</p>
-            <p className="mt-2 text-[14px] font-semibold leading-6">{activeThinking.answer}</p>
-          </div>
           <div className="rounded-xl p-4" style={{ border: '1px solid var(--border-primary)' }}>
             <p className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>Insight</p>
             <p className="mt-2 text-[14px] font-semibold leading-6">{activeThinking.insight}</p>
@@ -1139,49 +1355,75 @@ function DetailScreen({
         <section className="mt-5">
           <h3 className="text-[15px] font-extrabold">Timeline</h3>
           <div className="mt-3 space-y-3 pl-4" style={{ borderLeft: '1px solid var(--border-primary)' }}>
-            {['Prompt 입력', 'AI 분석', 'Insight 생성', 'History 저장'].map((item) => (
-              <div key={item} className="relative">
+            {(conversationMessages.length ? conversationMessages : [
+              { id: 'prompt', role: 'user' as const, content: activeThinking.prompt, createdAt: activeThinking.createdAt },
+              { id: 'answer', role: 'assistant' as const, content: activeThinking.answer, aiProvider: activeThinking.aiProvider, createdAt: activeThinking.updatedAt },
+            ]).filter((message) => message.role !== 'system').map((message) => (
+              <div key={message.id} className="relative">
                 <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
-                <p className="text-[13px] font-bold">{item}</p>
-                <p className="text-[11px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>오늘 14:30</p>
+                <p className="text-[13px] font-bold">{message.role === 'user' ? '질문' : `${message.aiProvider ?? activeThinking.aiProvider} 응답`}</p>
+                <p className="text-[11px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+                  {new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt))}
+                </p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mt-5 rounded-xl p-3" style={{ border: '1px solid var(--border-primary)' }}>
-          <p className="text-[13px] font-bold" style={{ color: 'var(--text-secondary)' }}>Continue Thinking</p>
+        <section className="mt-6 space-y-3">
+          <h3 className="text-[15px] font-extrabold">Conversation</h3>
+          {(conversationMessages.length ? conversationMessages : [
+            { id: 'prompt', role: 'user' as const, content: activeThinking.prompt },
+            { id: 'answer', role: 'assistant' as const, content: activeThinking.answer, aiProvider: activeThinking.aiProvider },
+          ]).filter((message) => message.role !== 'system').map((message) => (
+            <div
+              key={message.id}
+              className={`max-w-[88%] rounded-2xl px-4 py-3 ${message.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
+              style={{
+                backgroundColor: message.role === 'user' ? 'var(--bg-tertiary)' : 'var(--accent-green-soft)',
+                border: message.role === 'assistant' ? '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)' : '1px solid var(--border-primary)',
+              }}
+            >
+              <p className="text-[11px] font-bold" style={{ color: message.role === 'assistant' ? 'var(--accent-green)' : 'var(--text-secondary)' }}>
+                {message.role === 'assistant' ? message.aiProvider ?? activeThinking.aiProvider : '나'}
+              </p>
+              <p className="mt-1 text-[14px] font-semibold leading-6">{message.content}</p>
+            </div>
+          ))}
+        </section>
+      </div>
+      <div className="px-4 pb-3 pt-2" style={{ borderTop: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-secondary)' }}>
+        <p className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>다음 응답 모델</p>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {orderedAccounts.map((account) => (
+            <button key={account.id} onClick={() => { setSelectedProvider(account.provider); onSelectAccount(account.id); onSelectModel(null); }} className="shrink-0 rounded-lg px-3 py-2 text-[9px] font-bold" style={{ backgroundColor: selectedProvider === account.provider && account.isDefault ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: selectedProvider === account.provider && account.isDefault ? '#021b12' : 'var(--text-secondary)' }}>{account.provider}</button>
+          ))}
+          {providers.filter((provider) => !aiAccounts.some((account) => account.provider === provider.name)).map((provider) => (
+            <button key={provider.name} onClick={() => { setSelectedProvider(provider.name); onSelectModel(null); setScreen('aiAccounts'); }} className="shrink-0 rounded-lg px-3 py-2 text-[9px] font-bold" style={{ border: '1px solid var(--border-primary)', color: 'var(--text-secondary)' }}>+ {provider.name}</button>
+          ))}
+        </div>
+        <label className="mb-2 block text-[10px] font-bold" style={{ color: 'var(--text-secondary)' }}>
+          하위 모델
+          <ModelSelect value={selectedProviderModel} options={selectedProviderModels} onChange={onSelectModel} compact dropUp />
+        </label>
+        <div className="flex items-end gap-2">
           <textarea
-            value={continueText}
-            onChange={(event) => setContinueText(event.target.value)}
-            className="mt-2 h-20 w-full resize-none rounded-lg p-3 text-[14px] font-semibold outline-none"
-            style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-            placeholder="새 질문을 입력하면 기존 Context와 합쳐 분석합니다."
+          value={continueText}
+          onChange={(event) => setContinueText(event.target.value)}
+          className="h-11 min-h-11 flex-1 resize-none rounded-xl px-3 py-2.5 text-[14px] font-semibold outline-none"
+          style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+          placeholder="이어서 질문하기"
           />
           <button
-            onClick={onContinueThinking}
-            disabled={isSaving}
-            className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg text-[14px] font-bold text-white"
-            style={{ backgroundColor: 'var(--accent-green)' }}
+          aria-label="이어서 보내기"
+          onClick={onContinueThinking}
+          disabled={isSaving || !continueText.trim()}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-[#021b12] disabled:opacity-35"
+          style={{ backgroundColor: 'var(--accent-green)' }}
           >
-            <Plus size={17} /> {isSaving ? '분석 중...' : 'Continue'}
+            <Send size={19} />
           </button>
-        </section>
-
-        <section className="mt-4 grid grid-cols-4 gap-2">
-          <button className="rounded-lg py-3 text-[11px] font-bold" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-            <Share2 className="mx-auto mb-1" size={18} /> Share
-          </button>
-          <button onClick={() => setScreen('profile')} className="rounded-lg py-3 text-[11px] font-bold" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-            <Download className="mx-auto mb-1" size={18} /> Export
-          </button>
-          <button className="rounded-lg py-3 text-[11px] font-bold" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-            <Archive className="mx-auto mb-1" size={18} /> Folder
-          </button>
-          <button className="rounded-lg py-3 text-[11px] font-bold text-rose-600" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-            <Trash2 className="mx-auto mb-1" size={18} /> Delete
-          </button>
-        </section>
+        </div>
       </div>
     </div>
   );
@@ -1205,21 +1447,10 @@ function TimelineScreen({
 
     return result;
   }, []);
-  const filters = ['전체', '오늘', '이번 주', '이번 달', '1년 전'];
-
   return (
     <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
       <div className="flex h-[54px] items-center justify-between px-5 pt-1">
-        <div className="flex gap-7 text-[13px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-          {['최근 대화', '프로젝트', '즐겨찾기'].map((tab, index) => (
-            <button key={tab} className="pb-2" style={index === 0 ? { borderBottom: '2px solid var(--accent-green)', color: 'var(--text-primary)' } : {}}>
-              {tab}
-            </button>
-          ))}
-        </div>
-        <button className="grid h-9 w-9 place-items-center rounded-full" style={{ color: 'var(--text-tertiary)' }}>
-          <Calendar size={18} />
-        </button>
+        <h1 className="pb-2 text-[13px] font-semibold" style={{ borderBottom: '2px solid var(--accent-green)', color: 'var(--text-primary)' }}>최근 대화</h1>
       </div>
       <div className="flex-1 overflow-y-auto px-6 pb-5 pt-3">
         {groups.length === 0 ? (
@@ -1241,21 +1472,6 @@ function TimelineScreen({
           </section>
         ) : (
           <>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {filters.map((filter, index) => (
-              <button
-                key={filter}
-                className={`h-9 shrink-0 rounded-xl px-4 text-[12px] font-extrabold`}
-                style={{
-                  backgroundColor: index === 0 ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-                  border: index === 0 ? '1px solid var(--accent-green)' : '1px solid var(--border-primary)',
-                  color: index === 0 ? 'white' : 'var(--text-secondary)',
-                }}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
           {groups.map((group) => (
             <section key={group.title} className="mt-5">
               <h2 className="text-[13px] font-extrabold" style={{ color: 'var(--text-secondary)' }}>{group.title}</h2>
@@ -1291,14 +1507,6 @@ function TimelineScreen({
           </>
         )}
 
-        {groups.length > 0 && (
-          <button
-            className="mx-auto mt-1 flex h-11 items-center gap-2 rounded-full px-5 text-[13px] font-extrabold shadow-sm"
-            style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-green)' }}
-          >
-            <Calendar size={18} /> 캘린더 보기
-          </button>
-        )}
       </div>
       <BottomNavigation screen="timeline" setScreen={setScreen} />
     </div>
@@ -1366,6 +1574,7 @@ function InsightScreen({
   thinkings: ProductThinking[];
   insights: ProductInsight[];
 }) {
+  const [showDetails, setShowDetails] = useState(false);
   const tagCounts = getTagCounts(thinkings);
   const totalTags = tagCounts.reduce((sum, [, count]) => sum + count, 0);
   const latestInsight = insights[0];
@@ -1486,8 +1695,8 @@ function InsightScreen({
                 : '첫 Thinking을 저장하면 인사이트 분석이 시작됩니다.')}
           </p>
           <div className="mt-2 flex items-end justify-between gap-3">
-            <button className="h-9 rounded-lg px-3 text-[12px] font-bold shadow-sm" style={{ backgroundColor: 'var(--bg-card)' }}>
-              자세히 보기 <ChevronRight className="inline" size={14} />
+            <button onClick={() => setShowDetails((value) => !value)} aria-expanded={showDetails} className="h-9 rounded-lg px-3 text-[12px] font-bold shadow-sm" style={{ backgroundColor: 'var(--bg-card)' }}>
+              {showDetails ? '접기' : '자세히 보기'} <ChevronRight className="inline" size={14} />
             </button>
             <div className="relative h-28 w-[170px]">
               <svg viewBox="0 0 170 112" className="h-full w-full" aria-hidden="true">
@@ -1500,6 +1709,15 @@ function InsightScreen({
             </div>
           </div>
         </section>
+
+        {showDetails && (
+          <section className="mt-3 rounded-xl p-4" style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-card)' }}>
+            <p className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>분석 근거 · {thinkings.length}개 Thinking</p>
+            <div className="mt-3 space-y-2 text-[13px] font-semibold leading-5">
+              {(latestInsight?.patterns.length ? latestInsight.patterns : topTags.map(([tag]) => `${tag} 관련 기록`)).map((item) => <p key={item}>• {item}</p>)}
+            </div>
+          </section>
+        )}
 
         <section className="mt-5">
           <div className="flex items-center justify-between">
@@ -1527,8 +1745,8 @@ function InsightScreen({
         <section className="mt-5">
           <div className="flex items-center justify-between">
             <h2 className="text-[16px] font-black">주요 패턴</h2>
-            <button onClick={() => setScreen('detail')} className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>
-              더 보기 <ChevronRight className="inline" size={14} />
+            <button onClick={() => setShowDetails((value) => !value)} aria-expanded={showDetails} className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>
+              {showDetails ? '접기' : '더 보기'} <ChevronRight className="inline" size={14} />
             </button>
           </div>
           <div className="mt-3 space-y-3">
@@ -1654,6 +1872,7 @@ function ProviderAccountsScreen({
   onEditAccount,
   onSetDefault,
   onRemoveAccount,
+  onHome,
 }: {
   provider: Provider;
   aiAccounts: AiAccount[];
@@ -1662,6 +1881,7 @@ function ProviderAccountsScreen({
   onEditAccount: (accountId: string) => void;
   onSetDefault: (accountId: string) => void;
   onRemoveAccount: (accountId: string) => void;
+  onHome: () => void;
 }) {
   const accounts = aiAccounts.filter((account) => account.provider === provider);
 
@@ -1724,6 +1944,13 @@ function ProviderAccountsScreen({
           >
             <Plus size={18} /> 새 계정 추가
           </button>
+          <button
+            onClick={onHome}
+            className="flex h-12 w-full items-center justify-center rounded-xl text-[14px] font-black text-[#021b12]"
+            style={{ backgroundColor: 'var(--accent-green)' }}
+          >
+            메인으로 돌아가기
+          </button>
         </section>
       </div>
     </div>
@@ -1749,13 +1976,55 @@ function AccountEditorScreen({
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<AiAccount['status']>(account?.status ?? 'untested');
   const [testedAt, setTestedAt] = useState(account?.lastCheckedAt ?? '');
+  const [testError, setTestError] = useState('');
+  const [isTesting, setIsTesting] = useState(false);
+  const [availableModels, setAvailableModels] = useState(providerModels[provider]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
   const isInvalid = status === 'invalid';
   const isConnected = status === 'connected';
 
-  const runTest = () => {
-    const nextStatus = validateApiKey(provider, apiKey) ? 'connected' : 'invalid';
-    setStatus(nextStatus);
-    setTestedAt(new Date().toISOString());
+  const loadOpenCodeZenModels = async () => {
+    setIsLoadingModels(true);
+    setTestError('');
+    try {
+      const result = await apiJson<{ models: Array<{ id: string; name: string }> }>('/api/ai/models', {
+        method: 'POST',
+        body: JSON.stringify({ apiKey: apiKey.trim() }),
+      });
+      setAvailableModels(result.models.map((item) => item.id));
+      if (!result.models.some((item) => item.id === model)) setModel(result.models[0]?.id ?? model);
+    } catch (error) {
+      setTestError(error instanceof Error ? error.message : '모델 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsLoadingModels(false);
+    }
+  };
+
+  const runTest = async () => {
+    setIsTesting(true);
+    setTestError('');
+    try {
+      await apiJson('/api/ai/test', {
+        method: 'POST',
+        body: JSON.stringify({ provider, apiKey: apiKey.trim(), model }),
+      });
+      setStatus('connected');
+      setTestedAt(new Date().toISOString());
+      onSave({
+        id: account?.id,
+        provider,
+        name: name.trim() || `${provider} Account`,
+        apiKey: apiKey.trim(),
+        model,
+        status: 'connected',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Provider 연결에 실패했습니다.';
+      setStatus(message.includes('일시적으로 사용할 수 없습니다') ? 'untested' : 'invalid');
+      setTestError(message);
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   return (
@@ -1765,19 +2034,19 @@ function AccountEditorScreen({
         onBack={onBack}
         right={
           <button
+            disabled={!apiKey.trim() || status !== 'connected'}
             onClick={() => {
-              if (!apiKey.trim()) return;
-              const nextStatus = status === 'untested' ? (validateApiKey(provider, apiKey) ? 'connected' : 'invalid') : status;
+              if (!apiKey.trim() || status !== 'connected') return;
               onSave({
                 id: account?.id,
                 provider,
                 name: name.trim() || `${provider} Account`,
                 apiKey: apiKey.trim(),
                 model,
-                status: nextStatus,
+                status,
               });
             }}
-            className="h-9 px-2 text-[13px] font-black"
+            className="h-9 px-2 text-[13px] font-black disabled:opacity-30"
             style={{ color: 'var(--accent-green)' }}
           >
             저장
@@ -1798,13 +2067,14 @@ function AccountEditorScreen({
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="mt-2 h-11 w-full rounded-lg px-3 text-[14px] font-semibold outline-none focus:border-[var(--accent-green)]"
+              className="mt-2 h-11 w-full rounded-lg px-3 text-[12px] font-semibold outline-none focus:border-[var(--accent-green)]"
               style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
               placeholder="Personal GPT"
             />
           </label>
           <label className="block">
             <span className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>API Key</span>
+            <a href={providerApiKeyUrls[provider]} target="_blank" rel="noreferrer" className="float-right text-[12px] font-bold" style={{ color: 'var(--accent-green)' }}>공식 발급 페이지 열기 ↗</a>
             <div
               className="mt-2 flex h-11 items-center rounded-lg px-3 focus-within:border-[var(--accent-green)]"
               style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}
@@ -1814,6 +2084,7 @@ function AccountEditorScreen({
                 onChange={(event) => {
                   setApiKey(event.target.value);
                   setStatus('untested');
+                  setTestError('');
                 }}
                 type={showKey ? 'text' : 'password'}
                 className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold outline-none placeholder:opacity-35"
@@ -1827,15 +2098,20 @@ function AccountEditorScreen({
           </label>
           <label className="block">
             <span className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>모델</span>
+            {provider === 'OpenCode Zen' && (
+              <button type="button" onClick={() => void loadOpenCodeZenModels()} disabled={!apiKey.trim() || isLoadingModels} className="float-right text-[12px] font-bold disabled:opacity-30" style={{ color: 'var(--accent-green)' }}>
+                {isLoadingModels ? '불러오는 중...' : '전체 모델 불러오기'}
+              </button>
+            )}
             <select
               value={model}
               onChange={(event) => setModel(event.target.value)}
               className="mt-2 h-11 w-full rounded-lg px-3 text-[14px] font-semibold outline-none focus:border-[var(--accent-green)]"
               style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
             >
-              {providerModels[provider].map((item) => (
+              {availableModels.map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {item}{provider === 'OpenCode Zen' && ['x-preview-f-free', 'big-pickle', 'hy3-free', 'nemotron-3-ultra-free', 'nemotron-3.5-lightning-free', 'muse-spark-1.2-contributor-free'].includes(item) ? ' · 무료' : ''}
                 </option>
               ))}
             </select>
@@ -1868,21 +2144,19 @@ function AccountEditorScreen({
           )}
         </div>
 
-        {isInvalid && (
+        {testError && (
           <div className="mt-4 rounded-lg px-3 py-3 text-[12px] font-bold leading-5 text-red-300" style={{ border: '1px solid rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.12)' }}>
-            API Key가 올바르지 않습니다.
-            <br />
-            다시 확인해주세요.
+            {testError || 'API Key 또는 선택한 모델의 접근 권한을 확인해주세요.'}
           </div>
         )}
 
         <button
-          onClick={runTest}
-          disabled={!apiKey.trim()}
+          onClick={() => void runTest()}
+          disabled={!apiKey.trim() || isTesting}
           className="mt-5 h-11 w-full rounded-lg text-[14px] font-black disabled:opacity-30"
           style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)', opacity: apiKey.trim() ? 1 : 0.3 }}
         >
-          {isConnected ? '연결 테스트' : '다시 테스트'}
+          {isTesting ? '연결 확인 중...' : account ? '연결 다시 확인 및 저장' : '연결 및 저장'}
         </button>
         {account ? (
           <button
@@ -1894,20 +2168,7 @@ function AccountEditorScreen({
           >
             계정 삭제
           </button>
-        ) : (
-          <button
-            onClick={() => {
-              if (!apiKey.trim()) return;
-              const nextStatus = status === 'untested' ? (validateApiKey(provider, apiKey) ? 'connected' : 'invalid') : status;
-              onSave({ provider, name: name.trim() || `${provider} Account`, apiKey: apiKey.trim(), model, status: nextStatus });
-            }}
-            disabled={!apiKey.trim()}
-            className="mt-5 h-11 w-full rounded-lg text-[14px] font-black disabled:opacity-30"
-            style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
-          >
-            계정 추가
-          </button>
-        )}
+        ) : null}
         <div className="mt-6 flex items-center justify-center gap-2 text-[11px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
           <span className={`h-2 w-2 rounded-full ${providerAccent[provider].bg}`} />
           이 키는 현재 브라우저에만 저장됩니다.
@@ -1932,12 +2193,6 @@ function ProfileScreen({
 }) {
   const { theme, toggleTheme } = useTheme();
   const connectedCount = providers.filter((provider) => hasProviderAccess(provider.name, aiAccounts, aiConnections)).length;
-  const exportItems = [
-    { label: 'Markdown', icon: FileText },
-    { label: 'PDF', icon: Download },
-    { label: 'Word', icon: FileText },
-    { label: 'Notion', icon: Square },
-  ];
 
   return (
     <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
@@ -1956,17 +2211,14 @@ function ProfileScreen({
             <BrandGlyph size="md" />
             <p className="text-[12px] font-semibold leading-5" style={{ color: 'var(--text-secondary)' }}>AI Provider를 연결하면 Think Along의 모든 기능을 사용할 수 있습니다.</p>
           </div>
-          <button onClick={() => setScreen('aiAccounts')} className="mt-4 h-11 w-full rounded-lg text-[14px] font-black text-white" style={{ backgroundColor: 'var(--accent-green)' }}>
+          <button onClick={() => setScreen('aiAccounts')} className="mt-4 h-11 w-full rounded-lg text-[14px] font-black text-[#021b12]" style={{ backgroundColor: 'var(--accent-green)' }}>
             AI 연결하기
           </button>
         </section>
 
         <section className="mt-4 space-y-2">
           {[
-            ['Account', Mail],
-            ['Subscription', Star],
             ['AI Provider Accounts', Bot],
-            ['Settings', Settings],
           ].map(([label, Icon]) => {
             const ItemIcon = Icon as typeof Mail;
 
@@ -2006,7 +2258,7 @@ function ProfileScreen({
               style={{
                 backgroundColor: theme === 'dark' ? 'var(--accent-green)' : 'var(--bg-secondary)',
                 border: theme === 'dark' ? '1px solid var(--accent-green)' : '1px solid var(--border-primary)',
-                color: theme === 'dark' ? 'white' : 'var(--text-primary)',
+                color: theme === 'dark' ? '#021b12' : 'var(--text-primary)',
               }}
             >
               <Moon size={18} /> Dark
@@ -2017,27 +2269,11 @@ function ProfileScreen({
               style={{
                 backgroundColor: theme === 'light' ? 'var(--accent-green)' : 'var(--bg-secondary)',
                 border: theme === 'light' ? '1px solid var(--accent-green)' : '1px solid var(--border-primary)',
-                color: theme === 'light' ? 'white' : 'var(--text-primary)',
+                color: theme === 'light' ? '#021b12' : 'var(--text-primary)',
               }}
             >
               <Sun size={18} /> Light
             </button>
-          </div>
-        </section>
-
-        <section className="mt-5 rounded-xl border p-4" style={{ border: '1px solid var(--border-primary)' }}>
-          <h2 className="text-[16px] font-black">Export</h2>
-          <p className="mt-1 text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>Thinking을 원하는 형식으로 다운로드합니다.</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {exportItems.map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <button key={item.label} className="flex h-12 items-center justify-center gap-2 rounded-lg text-[13px] font-bold" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                  <Icon size={17} /> {item.label}
-                </button>
-              );
-            })}
           </div>
         </section>
 
@@ -2073,14 +2309,17 @@ export default function Page() {
   const [nickname, setNickname] = useState('Alex');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['사업', '개발', '생산성']);
   const [selectedProvider, setSelectedProvider] = useState<Provider>('GPT');
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
   const [continueText, setContinueText] = useState('');
   const [user, setUser] = useState<AppUser | null>(null);
   const [thinkings, setThinkings] = useState<ProductThinking[]>([]);
   const [insights, setInsights] = useState<ProductInsight[]>([]);
   const [selectedThinking, setSelectedThinking] = useState<ProductThinking | null>(null);
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
+  const [requestError, setRequestError] = useState('');
   const [aiConnections, setAiConnections] = useState<AiConnection[]>([]);
   const [aiAccounts, setAiAccounts] = useState<AiAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -2095,11 +2334,24 @@ export default function Page() {
       if (!current) return payload.thinkings[0] ?? null;
       return payload.thinkings.find((thinking) => thinking.id === current.id) ?? current;
     });
+    return payload.thinkings;
   };
 
   const loadInsights = async () => {
     const payload = await apiJson<{ insights: ProductInsight[] }>('/api/insights');
     setInsights(payload.insights);
+  };
+
+  const loadConversation = async (thinkingId: string) => {
+    const payload = await apiJson<{ messages: ConversationMessage[] }>(`/api/thinkings/${thinkingId}`);
+    setConversationMessages(payload.messages);
+  };
+
+  const openThinking = (thinking: ProductThinking) => {
+    setSelectedThinking(thinking);
+    setSelectedProvider(thinking.aiProvider);
+    setScreen('detail');
+    void loadConversation(thinking.id);
   };
 
   const loadAiConnections = async () => {
@@ -2131,9 +2383,9 @@ export default function Page() {
         if (cancelled || !activeUser) return;
         setUser(activeUser);
         setNickname(activeUser.nickname);
-        setSelectedProvider(activeUser.defaultAiProvider);
         setSelectedInterests(activeUser.interests);
-        await loadThinkings();
+        const loadedThinkings = await loadThinkings();
+        setSelectedProvider(loadedThinkings[0]?.aiProvider ?? activeUser.defaultAiProvider);
         await loadInsights();
         await loadAiConnections();
       } catch (error) {
@@ -2153,8 +2405,18 @@ export default function Page() {
   useEffect(() => {
     window.setTimeout(() => {
       try {
-        const saved = window.localStorage.getItem('think_along_ai_accounts');
-        if (saved) setAiAccounts(JSON.parse(saved) as AiAccount[]);
+        window.localStorage.removeItem('think_along_ai_accounts');
+        const saved = window.localStorage.getItem('think_along_ai_accounts_v2');
+        if (saved) setAiAccounts((JSON.parse(saved) as AiAccount[]).filter((account) => (account.provider as string) !== 'MiMo').map((account) => (account.provider as string) === 'OpenRouter' || /OpenRouter/i.test(account.name)
+          ? {
+            ...account,
+            provider: 'OpenCode Zen',
+            name: account.name.replace(/OpenRouter/gi, 'OpenCode Zen'),
+            model: ({ '~x-ai/grok-latest': 'grok-4.6', '~moonshotai/kimi-latest': 'kimi-k3' } as Record<string, string>)[account.model] ?? 'x-preview-f-free',
+            status: 'untested',
+            lastCheckedAt: undefined,
+          }
+          : account));
       } catch {
         setAiAccounts([]);
       } finally {
@@ -2165,7 +2427,7 @@ export default function Page() {
 
   useEffect(() => {
     if (!accountsLoaded) return;
-    window.localStorage.setItem('think_along_ai_accounts', JSON.stringify(aiAccounts));
+    window.localStorage.setItem('think_along_ai_accounts_v2', JSON.stringify(aiAccounts));
   }, [accountsLoaded, aiAccounts]);
 
   useEffect(() => {
@@ -2266,6 +2528,7 @@ export default function Page() {
   const completeOnboarding = async () => {
     setIsSaving(true);
     setApiMessage('');
+    setRequestError('');
 
     try {
       const payload = await apiJson<{ user: AppUser }>('/api/auth/email', {
@@ -2308,26 +2571,28 @@ export default function Page() {
         return;
       }
 
-      const payload = await apiJson<{ thinking: ProductThinking }>('/api/thinkings', {
+      const payload = await apiJson<{ thinking: ProductThinking; messages: ConversationMessage[] }>('/api/thinkings', {
         method: 'POST',
         body: JSON.stringify({
           prompt,
           aiProvider: selectedProvider,
           aiCredential: activeAccount
             ? {
-                apiKey: activeAccount.apiKey,
-                model: activeAccount.model,
+              apiKey: activeAccount.apiKey,
+                connectionId: activeAccount.id,
+                model: selectedProvider === 'OpenCode Zen' && selectedModel ? selectedModel : activeAccount.model,
               }
             : undefined,
         }),
       });
       setSelectedThinking(payload.thinking);
+      setConversationMessages(payload.messages);
       setPrompt('');
       await loadThinkings();
       await loadInsights();
       setScreen('detail');
     } catch (error) {
-      setApiMessage(error instanceof Error ? error.message : 'Thinking 생성에 실패했습니다.');
+      setRequestError(error instanceof Error ? error.message : 'Thinking 생성에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -2343,21 +2608,24 @@ export default function Page() {
     setApiMessage('');
 
     try {
-      const activeAccount = defaultAccountFor(selectedThinking.aiProvider, aiAccounts);
+      const activeAccount = defaultAccountFor(selectedProvider, aiAccounts);
       const payload = await apiJson<{ thinking: ProductThinking }>(`/api/thinkings/${selectedThinking.id}/continue`, {
         method: 'POST',
         body: JSON.stringify({
           prompt: continueText,
+          aiProvider: selectedProvider,
           aiCredential: activeAccount
             ? {
-                apiKey: activeAccount.apiKey,
-                model: activeAccount.model,
+              apiKey: activeAccount.apiKey,
+                connectionId: activeAccount.id,
+                model: selectedProvider === 'OpenCode Zen' && selectedModel ? selectedModel : activeAccount.model,
               }
             : undefined,
         }),
       });
       setSelectedThinking(payload.thinking);
       setContinueText('');
+      await loadConversation(payload.thinking.id);
       await loadThinkings();
       await loadInsights();
     } catch (error) {
@@ -2365,6 +2633,15 @@ export default function Page() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const deleteThinking = async (thinkingId: string) => {
+    await apiJson(`/api/thinkings/${thinkingId}`, { method: 'DELETE' });
+    setSelectedThinking(null);
+    setConversationMessages([]);
+    await loadThinkings();
+    setScreen('home');
+    setApiMessage('Thinking을 삭제했습니다.');
   };
 
   const renderScreen = () => {
@@ -2388,6 +2665,45 @@ export default function Page() {
     }
 
     if (screen === 'home') {
+      if (thinkings.length === 0) {
+        return (
+          <HomeScreen
+            selectedProvider={selectedProvider}
+            setSelectedProvider={setSelectedProvider}
+            prompt={prompt}
+            setPrompt={setPrompt}
+            setScreen={setScreen}
+            thinkings={thinkings}
+            onCreateThinking={createThinking}
+            onSelectThinking={openThinking}
+            isSaving={isSaving}
+            aiConnections={aiConnections}
+            aiAccounts={aiAccounts}
+            onOpenAiSetup={(provider) => openAccountEditor(provider)}
+            requestError={requestError}
+            forceEmpty
+            selectedModel={selectedModel}
+            onSelectModel={setSelectedModel}
+          />
+        );
+      }
+
+      return (
+        <ProjectHomeScreen
+          selectedProvider={selectedProvider}
+          setSelectedProvider={setSelectedProvider}
+          thinkings={thinkings}
+          aiAccounts={aiAccounts}
+          onSelectAccount={setDefaultAiAccount}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
+          setScreen={setScreen}
+          onSelectThinking={openThinking}
+        />
+      );
+    }
+
+    if (screen === 'thinking') {
       return (
         <HomeScreen
           selectedProvider={selectedProvider}
@@ -2397,16 +2713,15 @@ export default function Page() {
           setScreen={setScreen}
           thinkings={thinkings}
           onCreateThinking={createThinking}
-          onSelectThinking={(thinking) => {
-            setSelectedThinking(thinking);
-            setScreen('detail');
-          }}
+          onSelectThinking={openThinking}
           isSaving={isSaving}
           aiConnections={aiConnections}
           aiAccounts={aiAccounts}
-          onRefreshAiConnections={loadAiConnections}
           onOpenAiSetup={(provider) => openAccountEditor(provider)}
-         forceEmpty={previewMode} />
+          requestError={requestError}
+          forceEmpty={previewMode}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel} />
       );
     }
 
@@ -2415,12 +2730,19 @@ export default function Page() {
         <DetailScreen
           prompt={prompt}
           selectedProvider={selectedProvider}
+          setSelectedProvider={setSelectedProvider}
           setScreen={setScreen}
           continueText={continueText}
           setContinueText={setContinueText}
           selectedThinking={selectedThinking}
+          conversationMessages={conversationMessages}
           onContinueThinking={continueThinking}
+          onDeleteThinking={deleteThinking}
           isSaving={isSaving}
+          aiAccounts={aiAccounts}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
+          onSelectAccount={setDefaultAiAccount}
         />
       );
     }
@@ -2430,10 +2752,7 @@ export default function Page() {
         <TimelineScreen
           setScreen={setScreen}
           thinkings={thinkings}
-          onSelectThinking={(thinking) => {
-            setSelectedThinking(thinking);
-            setScreen('detail');
-          }}
+          onSelectThinking={openThinking}
         />
       );
     }
@@ -2463,6 +2782,7 @@ export default function Page() {
           onEditAccount={(accountId) => openAccountEditor(providerAccountScreen, accountId)}
           onSetDefault={setDefaultAiAccount}
           onRemoveAccount={removeAiAccount}
+          onHome={() => setScreen('home')}
         />
       );
     }

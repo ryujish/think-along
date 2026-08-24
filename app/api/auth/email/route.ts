@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { sessionCookie, signInWithEmail } from '@/lib/server/auth';
 import type { AiProvider } from '@/lib/types';
 
-const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini'];
+const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'];
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
