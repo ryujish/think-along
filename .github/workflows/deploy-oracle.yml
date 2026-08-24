@@ -44,7 +44,6 @@ jobs:
         run: |
           rsync -az --delete \
             --exclude='.git/' \
-            --exclude='.next/' \
             --exclude='node_modules/' \
             --exclude='data/db.json' \
             --exclude='.env*' \
@@ -61,9 +60,8 @@ jobs:
           ssh -i ~/.ssh/oracle "$USER@$HOST" <<'REMOTE'
           set -euo pipefail
           cd /home/opc/thingalong
+          npm ci --omit=dev
           sudo systemctl stop thingalong || true
-          npm ci
-          npm run build
           sudo install -m 0644 deploy/thingalong.service /etc/systemd/system/thingalong.service
           sudo test -e /etc/nginx/conf.d/thingalong.conf || sudo install -m 0644 deploy/thingalong.conf /etc/nginx/conf.d/thingalong.conf
           sudo firewall-cmd --permanent --add-service=http
