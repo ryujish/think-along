@@ -63,7 +63,7 @@ jobs:
           npm ci --omit=dev
           sudo systemctl stop thingalong || true
           sudo install -m 0644 deploy/thingalong.service /etc/systemd/system/thingalong.service
-          sudo test -e /etc/nginx/conf.d/thingalong.conf || sudo install -m 0644 deploy/thingalong.conf /etc/nginx/conf.d/thingalong.conf
+          sudo install -m 0644 deploy/thingalong.conf /etc/nginx/conf.d/thingalong.conf
           sudo firewall-cmd --permanent --add-service=http
           sudo firewall-cmd --permanent --add-service=https
           sudo firewall-cmd --reload
