@@ -85,6 +85,24 @@ type ConversationMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string;
   aiProvider?: Provider;
+  model?: string;
+  contextVersion?: number;
+  createdAt: string;
+};
+
+type ProductDecision = {
+  id: string;
+  statement: string;
+  topic?: string;
+  status: 'reviewing' | 'confirmed' | 'superseded' | 'discarded';
+  sourceMessageId?: string;
+  createdAt: string;
+};
+
+type ProductEvent = {
+  id: string;
+  type: 'decision.created' | 'decision.superseded' | 'model.executed' | 'tool.executed' | 'subagent.completed';
+  data: Record<string, string | number | boolean | undefined>;
   createdAt: string;
 };
 
@@ -124,6 +142,7 @@ type AiAccount = {
   isDefault: boolean;
   status: 'connected' | 'invalid' | 'untested';
   lastCheckedAt?: string;
+  source?: 'server';
 };
 
 const providers: { name: Provider; helper: string; icon: typeof Bot }[] = [
@@ -589,6 +608,137 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
+function DesktopNavigation({
+  screen,
+  setScreen,
+  thinkings,
+  onSelectThinking,
+}: {
+  screen: Screen;
+  setScreen: (screen: Screen) => void;
+  thinkings: ProductThinking[];
+  onSelectThinking: (thinking: ProductThinking) => void;
+}) {
+  const items = [
+    { screen: 'home' as Screen, label: 'Think', icon: Sparkles },
+    { screen: 'timeline' as Screen, label: 'Journey', icon: Compass },
+    { screen: 'insight' as Screen, label: 'Insight', icon: Lightbulb },
+    { screen: 'profile' as Screen, label: 'Profile', icon: User },
+  ];
+
+  return (
+    <aside className="desktop-aside desktop-nav" aria-label="주요 탐색">
+      <h1>Think Along</h1>
+      <nav>
+        {items.map((item) => {
+          const Icon = item.icon;
+          return <button key={item.label} aria-current={screen === item.screen ? 'page' : undefined} className={screen === item.screen ? 'active' : ''} onClick={() => setScreen(item.screen)}><Icon size={19} />{item.label}</button>;
+        })}
+      </nav>
+      <button className="desktop-new-thinking" onClick={() => setScreen('thinking')}><Plus size={18} /> 새 Thinking</button>
+      <section>
+        <h2>최근 Conversation</h2>
+        {thinkings.slice(0, 5).map((thinking) => (
+          <button key={thinking.id} className="desktop-conversation" onClick={() => onSelectThinking(thinking)}>
+            <FileText size={16} /><span><b>{thinking.title}</b><small>{thinking.prompt}</small></span>
+          </button>
+        ))}
+        {thinkings.length === 0 && <p className="desktop-muted">아직 저장된 대화가 없습니다.</p>}
+      </section>
+    </aside>
+  );
+}
+
+function DesktopContext({
+  screen,
+  selectedProvider,
+  selectedModel,
+  selectedThinking,
+  thinkings,
+  messages = [],
+  decisions = [],
+  events = [],
+  onSelectModel,
+  onSelectThinking,
+  onSelectSource,
+}: {
+  screen: Screen;
+  selectedProvider: Provider;
+  selectedModel: string | null;
+  selectedThinking: ProductThinking | null;
+  thinkings: ProductThinking[];
+  messages: ConversationMessage[];
+  decisions: ProductDecision[];
+  events: ProductEvent[];
+  onSelectModel: (model: string | null) => void;
+  onSelectThinking: (thinking: ProductThinking) => void;
+  onSelectSource: (messageId?: string) => void;
+}) {
+  const [tab, setTab] = useState<'context' | 'decision' | 'journey'>('context');
+  const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const activeModel = modelForProvider(selectedProvider, selectedModel);
+  const confirmed = decisions.filter((decision) => decision.status === 'confirmed');
+  const reviewing = decisions.filter((decision) => decision.status === 'reviewing');
+  const journey = [
+    ...messages.filter((message) => message.role !== 'system').map((message) => ({ id: message.id, title: message.role === 'user' ? '질문' : `${message.aiProvider ?? selectedProvider} 응답`, detail: message.content, createdAt: message.createdAt, messageId: message.id })),
+    ...events.map((event) => ({ id: event.id, title: event.type === 'model.executed' ? '모델 실행' : event.type === 'decision.created' ? '결정 저장' : event.type === 'decision.superseded' ? '결정 대체' : '작업 실행', detail: String(event.data.model ?? event.data.provider ?? event.type), createdAt: event.createdAt, messageId: undefined })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  useEffect(() => {
+    setTab(screen === 'detail' ? 'journey' : screen === 'timeline' || screen === 'insight' ? 'decision' : 'context');
+  }, [screen]);
+
+  useEffect(() => setPendingModel(null), [selectedProvider]);
+
+  return (
+    <aside className="desktop-aside desktop-context" aria-label="현재 컨텍스트">
+      <div className="desktop-context-tabs" role="tablist" aria-label="오른쪽 패널">
+        <button className={tab === 'context' ? 'active' : ''} onClick={() => setTab('context')} role="tab" aria-selected={tab === 'context'}>Context</button>
+        <button className={tab === 'decision' ? 'active' : ''} onClick={() => setTab('decision')} role="tab" aria-selected={tab === 'decision'}>Decision</button>
+        <button className={tab === 'journey' ? 'active' : ''} onClick={() => setTab('journey')} role="tab" aria-selected={tab === 'journey'}>Journey</button>
+      </div>
+      {tab === 'context' && <>
+      <section>
+        <span className="desktop-eyebrow">다음 응답 모델</span>
+        <strong>{selectedProvider}</strong>
+        <select value={pendingModel ?? activeModel} onChange={(event) => setPendingModel(event.target.value)} aria-label="하위 모델 선택">
+          {providerModels[selectedProvider].map((model) => <option key={model} value={model}>{model}</option>)}
+        </select>
+        {pendingModel && pendingModel !== activeModel && <div className="desktop-handoff">
+          <b>{activeModel} → {pendingModel}</b>
+          <p>확정 결정 {confirmed.length}개 · 최근 메시지 {Math.min(messages.length, 12)}개 · 현재 목표를 전달합니다.</p>
+          <small>API Key와 Provider 고유 대화 ID는 제외됩니다.</small>
+          <div><button onClick={() => setPendingModel(null)}>취소</button><button className="confirm" onClick={() => { onSelectModel(pendingModel); setPendingModel(null); }}>이 Context로 전환</button></div>
+        </div>}
+      </section>
+      <section>
+        <span className="desktop-eyebrow">Current Context</span>
+        <h2>{selectedThinking?.title ?? '새로운 Thinking'}</h2>
+        <p>{selectedThinking?.prompt ?? '대화를 시작하면 목표, 결정, 기억과 근거가 이곳에 표시됩니다.'}</p>
+        <div className="desktop-context-tags"><span>확정 결정 {confirmed.length}</span><span>검토 중 {reviewing.length}</span><span>메시지 {messages.length}</span></div>
+      </section>
+      <section>
+        <span className="desktop-eyebrow">전달 범위</span>
+        <div className="desktop-scope"><p>✓ 현재 목표와 프로젝트 상태</p><p>✓ 확정 결정과 최근 대화</p><p>✓ 사용자 선택 모델</p><p>— API Key와 고유 대화 ID 제외</p></div>
+      </section>
+      </>}
+      {tab === 'decision' && <section>
+        <span className="desktop-eyebrow">Decision Memory</span>
+        {decisions.map((decision) => <button key={decision.id} className="desktop-dock-item" onClick={() => onSelectSource(decision.sourceMessageId)}><span className={`desktop-status ${decision.status}`}>{decision.status === 'confirmed' ? '확정' : decision.status === 'reviewing' ? '검토 중' : decision.status === 'superseded' ? '대체됨' : '폐기'}</span><b>{decision.statement}</b>{decision.topic && <small>{decision.topic}</small>}</button>)}
+        {decisions.length === 0 && <p className="desktop-muted">저장된 결정이 없습니다. 대화에서 ‘결정’으로 저장하면 여기에 표시됩니다.</p>}
+      </section>}
+      {tab === 'journey' && <>
+      <section>
+        <span className="desktop-eyebrow">현재 Thinking</span>
+        {journey.map((item) => <button key={item.id} className="desktop-dock-item" onClick={() => onSelectSource(item.messageId)}><small>{formatShortTime(item.createdAt)}</small><b>{item.title}</b><p>{item.detail}</p></button>)}
+        {journey.length === 0 && <p className="desktop-muted">대화를 시작하면 질문, 응답, 결정과 모델 전환이 시간순으로 표시됩니다.</p>}
+      </section>
+      <section><span className="desktop-eyebrow">전체 Journey</span>{thinkings.slice(0, 5).map((thinking) => <button key={thinking.id} className="desktop-conversation" onClick={() => onSelectThinking(thinking)}><FileText size={16} /><span><b>{thinking.title}</b><small>{formatShortDate(thinking.updatedAt)}</small></span></button>)}</section>
+      </>}
+    </aside>
+  );
+}
+
 function ProjectHomeScreen({
   selectedProvider,
   setSelectedProvider,
@@ -699,11 +849,7 @@ function ProjectHomeScreen({
           </div>
         </section>
       </div>
-      <nav className="project-bottom-nav">
-        <button className="active" onClick={() => setScreen('home')}><Compass size={23} /><span>Journey</span></button>
-        <button onClick={() => setScreen('insight')}><Lightbulb size={23} /><span>Insight</span></button>
-        <button onClick={() => setScreen('profile')}><User size={23} /><span>Profile</span></button>
-      </nav>
+      <BottomNavigation screen="home" setScreen={setScreen} />
     </div>
   );
 }
@@ -1390,6 +1536,7 @@ function DetailScreen({
           ]).filter((message) => message.role !== 'system').map((message) => (
             <div
               key={message.id}
+              id={`message-${message.id}`}
               className={`max-w-[88%] rounded-2xl px-4 py-3 ${message.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
               style={{
                 backgroundColor: message.role === 'user' ? 'var(--bg-tertiary)' : 'var(--accent-green-soft)',
@@ -1940,7 +2087,7 @@ function ProviderAccountsScreen({
                   aria-label="기본 계정 선택"
                 />
                 <div className="min-w-0 flex-1">
-                  <button onClick={() => onEditAccount(account.id)} className="block w-full text-left">
+                  <button onClick={() => account.source !== 'server' && onEditAccount(account.id)} className="block w-full text-left">
                   <div className="flex items-center gap-2">
                     <h3 className="truncate text-[16px] font-black">{account.name}</h3>
                     {account.isDefault && (
@@ -1949,15 +2096,13 @@ function ProviderAccountsScreen({
                       </span>
                     )}
                   </div>
-                  <p className="mt-2 text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>{maskApiKey(account.apiKey)}</p>
+                  <p className="mt-2 text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>{account.source === 'server' ? '로컬 개발 서버에 안전하게 저장됨' : maskApiKey(account.apiKey)}</p>
                   <p className="mt-1 text-[12px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
                     {account.model} · {account.lastCheckedAt ? '방금 전' : '테스트 대기'}
                   </p>
                   </button>
                 </div>
-                <button onClick={() => onRemoveAccount(account.id)} className="grid h-8 w-8 place-items-center rounded-full bg-rose-50 text-rose-600">
-                  <Trash2 size={16} />
-                </button>
+                {account.source !== 'server' && <button onClick={() => onRemoveAccount(account.id)} className="grid h-8 w-8 place-items-center rounded-full bg-rose-50 text-rose-600"><Trash2 size={16} /></button>}
               </div>
             </article>
           ))}
@@ -2341,6 +2486,8 @@ export default function Page() {
   const [insights, setInsights] = useState<ProductInsight[]>([]);
   const [selectedThinking, setSelectedThinking] = useState<ProductThinking | null>(null);
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [selectedDecisions, setSelectedDecisions] = useState<ProductDecision[]>([]);
+  const [selectedEvents, setSelectedEvents] = useState<ProductEvent[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
   const [requestError, setRequestError] = useState('');
@@ -2368,14 +2515,21 @@ export default function Page() {
   };
 
   const loadConversation = async (thinkingId: string) => {
-    const payload = await apiJson<{ messages: ConversationMessage[] }>(`/api/thinkings/${thinkingId}`);
+    const payload = await apiJson<{ messages: ConversationMessage[]; decisions: ProductDecision[]; events: ProductEvent[] }>(`/api/thinkings/${thinkingId}`);
     setConversationMessages(payload.messages);
+    setSelectedDecisions(payload.decisions);
+    setSelectedEvents(payload.events);
   };
 
   const openThinking = (thinking: ProductThinking) => {
     setSelectedThinking(thinking);
     setScreen('detail');
     void loadConversation(thinking.id);
+  };
+
+  const openConversationSource = (messageId?: string) => {
+    setScreen('detail');
+    if (messageId) window.setTimeout(() => document.getElementById(`message-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
   };
 
   const loadAiConnections = async () => {
@@ -2410,6 +2564,7 @@ export default function Page() {
         setSelectedInterests(activeUser.interests);
         const loadedThinkings = await loadThinkings();
         setSelectedProvider(loadedThinkings[0]?.aiProvider ?? activeUser.defaultAiProvider);
+        if (loadedThinkings[0]) await loadConversation(loadedThinkings[0].id);
         await loadInsights();
         await loadAiConnections();
       } catch (error) {
@@ -2451,8 +2606,28 @@ export default function Page() {
 
   useEffect(() => {
     if (!accountsLoaded) return;
-    window.localStorage.setItem('think_along_ai_accounts_v2', JSON.stringify(aiAccounts));
+    window.localStorage.setItem('think_along_ai_accounts_v2', JSON.stringify(aiAccounts.filter((account) => account.source !== 'server')));
+    if (process.env.NODE_ENV === 'development' && aiAccounts.length) {
+      void apiJson('/api/ai/dev-credentials', { method: 'POST', body: JSON.stringify({ accounts: aiAccounts }) })
+        .then(loadAiConnections)
+        .catch(() => undefined);
+    }
   }, [accountsLoaded, aiAccounts]);
+
+  useEffect(() => {
+    if (!accountsLoaded) return;
+    setAiAccounts((current) => {
+      const browserAccounts = current.filter((account) => account.source !== 'server');
+      const serverAccounts: AiAccount[] = aiConnections
+        .filter((connection) => connection.connected && !browserAccounts.some((account) => account.provider === connection.provider))
+        .map((connection) => ({
+          id: `${connection.provider}:environment`, provider: connection.provider, name: '로컬 서버 계정', apiKey: '', model: connection.model,
+          isDefault: true, status: 'connected', source: 'server',
+        }));
+      const next = [...browserAccounts, ...serverAccounts];
+      return next.length === current.length && next.every((account, index) => account.id === current[index]?.id && account.model === current[index]?.model) ? current : next;
+    });
+  }, [accountsLoaded, aiConnections]);
 
   useEffect(() => {
     if (!apiMessage) return;
@@ -2615,6 +2790,8 @@ export default function Page() {
       });
       setSelectedThinking(payload.thinking);
       setConversationMessages(payload.messages);
+      setSelectedDecisions([]);
+      setSelectedEvents([]);
       setPrompt('');
       await loadThinkings();
       await loadInsights();
@@ -2678,6 +2855,8 @@ export default function Page() {
     await apiJson(`/api/thinkings/${thinkingId}`, { method: 'DELETE' });
     setSelectedThinking(null);
     setConversationMessages([]);
+    setSelectedDecisions([]);
+    setSelectedEvents([]);
     await loadThinkings();
     setScreen('home');
     setApiMessage('Thinking을 삭제했습니다.');
@@ -2850,12 +3029,16 @@ export default function Page() {
     return <ProfileScreen selectedProvider={selectedProvider} setScreen={setScreen} aiAccounts={aiAccounts} aiConnections={aiConnections} onTogglePreview={() => setPreviewMode(p => !p)} />;
   };
 
+  const showDesktopWorkspace = !['splash', 'welcome', 'intro', 'login', 'nickname', 'interests', 'provider'].includes(screen);
+
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', backgroundImage: 'radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--accent-green) 9%, transparent) 0%, transparent 28%)' }}>
-      <section className="mx-auto flex w-full max-w-[1080px] flex-col items-center">
+      <section className={`desktop-workspace mx-auto w-full max-w-[1600px] ${showDesktopWorkspace ? '' : 'desktop-workspace-single'}`}>
+        {showDesktopWorkspace && <DesktopNavigation screen={screen} setScreen={setScreen} thinkings={thinkings} onSelectThinking={openThinking} />}
         <PhoneFrame>
           {renderScreen()}
         </PhoneFrame>
+        {showDesktopWorkspace && <DesktopContext screen={screen} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedThinking={selectedThinking} thinkings={thinkings} messages={conversationMessages} decisions={selectedDecisions} events={selectedEvents} onSelectModel={setSelectedModel} onSelectThinking={openThinking} onSelectSource={openConversationSource} />}
         {apiMessage && (
           <div className="fixed bottom-6 left-1/2 z-50 max-w-[320px] -translate-x-1/2 rounded-full px-4 py-2 text-center text-[12px] font-bold text-white shadow-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
             {apiMessage}
