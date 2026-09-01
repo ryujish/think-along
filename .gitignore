@@ -45,3 +45,6 @@ ui-prototype/dist/
 
 # Accidental npm output file
 /11.18.0
+
+# Scratch directory
+scratch/

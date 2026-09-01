@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/auth';
-import { skills, tools } from '@/lib/server/capabilities';
+import { getSkills, tools } from '@/lib/server/capabilities';
 import { readDb } from '@/lib/server/db';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -13,5 +13,5 @@ export async function GET(request: Request, context: RouteContext) {
   if (!db.thinkings.some((item) => item.id === id && item.userId === auth.user.id)) {
     return NextResponse.json({ error: { code: 'THINKING_NOT_FOUND', message: 'Thinking을 찾을 수 없습니다.' } }, { status: 404 });
   }
-  return NextResponse.json({ tools, skills });
+  return NextResponse.json({ tools, skills: getSkills(db) });
 }

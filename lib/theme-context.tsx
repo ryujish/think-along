@@ -6,13 +6,6 @@ type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'think_along_theme';
 
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
-  if (stored === 'light' || stored === 'dark') return stored;
-  return 'dark';
-}
-
 type ThemeContextValue = {
   theme: Theme;
   toggleTheme: () => void;

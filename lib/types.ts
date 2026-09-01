@@ -1,6 +1,6 @@
 export type AuthProvider = 'email' | 'google' | 'apple';
-export type AiProvider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen';
-export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'xai' | 'moonshot' | 'opencode';
+export type AiProvider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen' | 'Hermes Local';
+export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'xai' | 'moonshot' | 'opencode' | 'local';
 export type ConnectionStatus = 'unknown' | 'available' | 'unavailable';
 
 export type ModelCapability = {
@@ -117,26 +117,36 @@ export type ContextPolicy = {
 
 export type InternalAgentRole = 'thinker' | 'critic' | 'synthesizer';
 
+export type ToolId = 'session.context.inspect' | string;
+
 export type ToolDefinition = {
-  id: 'session.context.inspect';
+  id: ToolId;
   name: string;
-  risk: 'read';
+  risk: 'read' | 'write' | 'execute';
+  description?: string;
+  parameters?: Record<string, unknown>;
 };
 
+export type SkillId = 'decision-review' | string;
+
 export type SkillDefinition = {
-  id: 'decision-review';
+  id: SkillId;
   name: string;
+  description?: string;
+  guidelines?: string[];
   agentRole: InternalAgentRole;
-  allowedTools: ToolDefinition['id'][];
+  allowedTools: ToolId[];
+  synthesizedFromSessionId?: string;
+  createdAt?: string;
 };
 
 export type ToolRun = {
   id: string;
   userId: string;
   thinkalongSessionId: string;
-  toolId: ToolDefinition['id'];
+  toolId: ToolId;
   status: 'succeeded' | 'failed';
-  result?: Record<string, number>;
+  result?: Record<string, unknown>;
   createdAt: string;
 };
 
@@ -145,7 +155,7 @@ export type SubAgentRun = {
   userId: string;
   thinkalongSessionId: string;
   role: InternalAgentRole;
-  skillId?: SkillDefinition['id'];
+  skillId?: SkillId;
   contextVersion: number;
   status: 'completed' | 'failed';
   output?: string;
@@ -159,7 +169,7 @@ export type DomainEvent = {
   id: string;
   userId: string;
   thinkalongSessionId: string;
-  type: 'decision.created' | 'decision.superseded' | 'model.executed' | 'tool.executed' | 'subagent.completed';
+  type: 'decision.created' | 'decision.superseded' | 'model.executed' | 'tool.executed' | 'subagent.completed' | 'skill.synthesized';
   data: Record<string, string | number | boolean | undefined>;
   createdAt: string;
 };
@@ -221,6 +231,7 @@ export type AppDatabase = {
   events: DomainEvent[];
   toolRuns: ToolRun[];
   subAgentRuns: SubAgentRun[];
+  skills?: SkillDefinition[];
 };
 
 export type ApiError = {

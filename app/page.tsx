@@ -29,7 +29,6 @@ import {
   Moon,
   Sun,
   Sparkles,
-  Square,
   Star,
   Trash2,
   User,
@@ -57,7 +56,7 @@ type Screen =
   | 'providerAccounts'
   | 'accountEditor';
 
-type Provider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen';
+type Provider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen' | 'Hermes Local';
 
 type AppUser = {
   id: string;
@@ -99,9 +98,20 @@ type ProductDecision = {
   createdAt: string;
 };
 
+type ProductSkill = {
+  id: string;
+  name: string;
+  description?: string;
+  guidelines?: string[];
+  agentRole: 'thinker' | 'critic' | 'synthesizer';
+  allowedTools: string[];
+  synthesizedFromSessionId?: string;
+  createdAt?: string;
+};
+
 type ProductEvent = {
   id: string;
-  type: 'decision.created' | 'decision.superseded' | 'model.executed' | 'tool.executed' | 'subagent.completed';
+  type: 'decision.created' | 'decision.superseded' | 'model.executed' | 'tool.executed' | 'subagent.completed' | 'skill.synthesized';
   data: Record<string, string | number | boolean | undefined>;
   createdAt: string;
 };
@@ -152,6 +162,7 @@ const providers: { name: Provider; helper: string; icon: typeof Bot }[] = [
   { name: 'Grok', helper: 'xAI 실시간 추론', icon: Bot },
   { name: 'Kimi', helper: 'Moonshot 장문·에이전트 추론', icon: WandSparkles },
   { name: 'OpenCode Zen', helper: '검증된 모델과 무료 모델 전환', icon: Compass },
+  { name: 'Hermes Local', helper: '로컬/오픈소스 에이전트 & 스킬 자율 추론', icon: Sparkles },
 ];
 
 const providerModels: Record<Provider, string[]> = {
@@ -161,6 +172,7 @@ const providerModels: Record<Provider, string[]> = {
   Grok: ['grok-4.6', 'grok-4.5', 'grok-4.1-fast', 'grok-4-fast'],
   Kimi: ['kimi-k3', 'kimi-k2.6', 'kimi-k2.5'],
   'OpenCode Zen': ['x-preview-f-free', 'big-pickle'],
+  'Hermes Local': ['hermes-3-llama-3.1-8b', 'hermes-3-llama-3.1-70b'],
 };
 
 const featuredZenModels = [
@@ -175,6 +187,7 @@ const providerApiKeyUrls: Record<Provider, string> = {
   Grok: 'https://console.x.ai/team/default/api-keys',
   Kimi: 'https://platform.kimi.ai/console/api-keys',
   'OpenCode Zen': 'https://opencode.ai/auth',
+  'Hermes Local': 'https://hermes-agent.org',
 };
 
 const providerLabels: Record<Provider, string> = {
@@ -184,6 +197,7 @@ const providerLabels: Record<Provider, string> = {
   Grok: 'Grok (xAI)',
   Kimi: 'Kimi (Moonshot AI)',
   'OpenCode Zen': 'OpenCode Zen',
+  'Hermes Local': 'Hermes Local (Nous Research)',
 };
 
 const providerAccent: Record<Provider, { bg: string; text: string; short: string }> = {
@@ -193,6 +207,7 @@ const providerAccent: Record<Provider, { bg: string; text: string; short: string
   Grok: { bg: 'bg-[#171717]', text: 'text-[#d4d4d4]', short: 'Gr' },
   Kimi: { bg: 'bg-[#7657ff]', text: 'text-[#7657ff]', short: 'Ki' },
   'OpenCode Zen': { bg: 'bg-[#6d5cff]', text: 'text-[#6d5cff]', short: 'OZ' },
+  'Hermes Local': { bg: 'bg-[#9333ea]', text: 'text-[#9333ea]', short: 'He' },
 };
 
 function providersByRegistration(accounts: AiAccount[]) {
@@ -658,6 +673,8 @@ function DesktopContext({
   messages = [],
   decisions = [],
   events = [],
+  skills = [],
+  onSynthesizeSkill,
   onSelectModel,
   onSelectThinking,
   onSelectSource,
@@ -670,18 +687,20 @@ function DesktopContext({
   messages: ConversationMessage[];
   decisions: ProductDecision[];
   events: ProductEvent[];
+  skills?: ProductSkill[];
+  onSynthesizeSkill?: () => Promise<void>;
   onSelectModel: (model: string | null) => void;
   onSelectThinking: (thinking: ProductThinking) => void;
   onSelectSource: (messageId?: string) => void;
 }) {
-  const [tab, setTab] = useState<'context' | 'decision' | 'journey'>('context');
+  const [tab, setTab] = useState<'context' | 'decision' | 'skills' | 'journey'>('context');
   const [pendingModel, setPendingModel] = useState<string | null>(null);
   const activeModel = modelForProvider(selectedProvider, selectedModel);
   const confirmed = decisions.filter((decision) => decision.status === 'confirmed');
   const reviewing = decisions.filter((decision) => decision.status === 'reviewing');
   const journey = [
     ...messages.filter((message) => message.role !== 'system').map((message) => ({ id: message.id, title: message.role === 'user' ? '질문' : `${message.aiProvider ?? selectedProvider} 응답`, detail: message.content, createdAt: message.createdAt, messageId: message.id })),
-    ...events.map((event) => ({ id: event.id, title: event.type === 'model.executed' ? '모델 실행' : event.type === 'decision.created' ? '결정 저장' : event.type === 'decision.superseded' ? '결정 대체' : '작업 실행', detail: String(event.data.model ?? event.data.provider ?? event.type), createdAt: event.createdAt, messageId: undefined })),
+    ...events.map((event) => ({ id: event.id, title: event.type === 'model.executed' ? '모델 실행' : event.type === 'decision.created' ? '결정 저장' : event.type === 'decision.superseded' ? '결정 대체' : event.type === 'skill.synthesized' ? '스킬 합성' : '작업 실행', detail: String(event.data.skillName ?? event.data.model ?? event.data.provider ?? event.type), createdAt: event.createdAt, messageId: undefined })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   useEffect(() => {
@@ -695,6 +714,7 @@ function DesktopContext({
       <div className="desktop-context-tabs" role="tablist" aria-label="오른쪽 패널">
         <button className={tab === 'context' ? 'active' : ''} onClick={() => setTab('context')} role="tab" aria-selected={tab === 'context'}>Context</button>
         <button className={tab === 'decision' ? 'active' : ''} onClick={() => setTab('decision')} role="tab" aria-selected={tab === 'decision'}>Decision</button>
+        <button className={tab === 'skills' ? 'active' : ''} onClick={() => setTab('skills')} role="tab" aria-selected={tab === 'skills'}>Skills</button>
         <button className={tab === 'journey' ? 'active' : ''} onClick={() => setTab('journey')} role="tab" aria-selected={tab === 'journey'}>Journey</button>
       </div>
       {tab === 'context' && <>
@@ -727,6 +747,47 @@ function DesktopContext({
         {decisions.map((decision) => <button key={decision.id} className="desktop-dock-item" onClick={() => onSelectSource(decision.sourceMessageId)}><span className={`desktop-status ${decision.status}`}>{decision.status === 'confirmed' ? '확정' : decision.status === 'reviewing' ? '검토 중' : decision.status === 'superseded' ? '대체됨' : '폐기'}</span><b>{decision.statement}</b>{decision.topic && <small>{decision.topic}</small>}</button>)}
         {decisions.length === 0 && <p className="desktop-muted">저장된 결정이 없습니다. 대화에서 ‘결정’으로 저장하면 여기에 표시됩니다.</p>}
       </section>}
+      {tab === 'skills' && <>
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <span className="desktop-eyebrow">Closed Learning Loop</span>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(147, 51, 234, 0.15)', color: '#a855f7' }}>Hermes Skill Loop</span>
+        </div>
+        <p className="text-[12px] leading-relaxed mb-3" style={{ color: 'var(--text-secondary)' }}>
+          대화에서 확정된 결정과 문제 해결 노하우를 <strong>&apos;학습 스킬&apos;</strong>로 추출하여 다른 모델 및 세션에서 재사용합니다.
+        </p>
+        {selectedThinking && onSynthesizeSkill && (
+          <button
+            onClick={() => void onSynthesizeSkill()}
+            className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 px-3 text-[13px] font-bold text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: 'var(--accent-green, #10a37f)' }}
+          >
+            <Sparkles size={16} />
+            <span>현재 대화에서 스킬 합성</span>
+          </button>
+        )}
+      </section>
+      <section>
+        <span className="desktop-eyebrow">등록된 스킬 ({skills.length}개)</span>
+        {skills.map((skill) => (
+          <div key={skill.id} className="desktop-dock-item mb-2 rounded-lg p-3" style={{ border: '1px solid var(--border-primary)' }}>
+            <div className="flex items-center justify-between">
+              <b className="text-[13px]">{skill.name}</b>
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>{skill.agentRole}</span>
+            </div>
+            {skill.description && <p className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{skill.description}</p>}
+            {skill.guidelines && skill.guidelines.length > 0 && (
+              <div className="mt-2 space-y-1 rounded p-2 text-[11px]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                {skill.guidelines.map((g, i) => (
+                  <div key={i} style={{ color: 'var(--text-primary)' }}>• {g}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {skills.length === 0 && <p className="desktop-muted">등록된 학습 스킬이 없습니다. 대화 후 스킬을 합성해보세요.</p>}
+      </section>
+      </>}
       {tab === 'journey' && <>
       <section>
         <span className="desktop-eyebrow">현재 Thinking</span>
@@ -1362,6 +1423,7 @@ function DetailScreen({
   conversationMessages,
   onContinueThinking,
   onDeleteThinking,
+  onSynthesizeSkill,
   isSaving,
   aiAccounts,
   selectedModel,
@@ -1381,6 +1443,7 @@ function DetailScreen({
   conversationMessages: ConversationMessage[];
   onContinueThinking: () => Promise<void>;
   onDeleteThinking: (thinkingId: string) => Promise<void>;
+  onSynthesizeSkill?: () => Promise<void>;
   isSaving: boolean;
   aiAccounts: AiAccount[];
   selectedModel: string | null;
@@ -1416,6 +1479,12 @@ function DetailScreen({
   }, [conversationMessages.length]);
 
   const menuItems = [
+    {
+      label: '💡 스킬 추출 (Learning Loop)',
+      action: async () => {
+        if (onSynthesizeSkill) await onSynthesizeSkill();
+      },
+    },
     {
       label: 'Share',
       action: async () => {
@@ -1500,6 +1569,25 @@ function DetailScreen({
             <p className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>Insight</p>
             <p className="mt-2 text-[14px] font-semibold leading-6">{activeThinking.insight}</p>
           </div>
+          {onSynthesizeSkill && (
+            <div className="flex items-center justify-between rounded-xl p-3.5" style={{ border: '1px solid rgba(147, 51, 234, 0.3)', backgroundColor: 'rgba(147, 51, 234, 0.08)' }}>
+              <div className="flex items-center gap-2.5">
+                <Sparkles size={18} style={{ color: '#a855f7' }} />
+                <div>
+                  <p className="text-[12px] font-bold" style={{ color: '#a855f7' }}>Closed Learning Loop</p>
+                  <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>이 대화의 결정을 재사용 스킬로 축적</p>
+                </div>
+              </div>
+              <button
+                onClick={() => void onSynthesizeSkill()}
+                disabled={isSaving}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: '#9333ea' }}
+              >
+                스킬 추출
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="mt-4 flex flex-wrap gap-2">
@@ -2352,13 +2440,11 @@ function ProfileScreen({
   setScreen,
   aiAccounts,
   aiConnections,
-  onTogglePreview,
 }: {
   selectedProvider: Provider;
   setScreen: (screen: Screen) => void;
   aiAccounts: AiAccount[];
   aiConnections: AiConnection[];
-  onTogglePreview?: () => void;
 }) {
   const { theme, toggleTheme } = useTheme();
   const connectedCount = providers.filter((provider) => hasProviderAccess(provider.name, aiAccounts, aiConnections)).length;
@@ -2496,8 +2582,36 @@ export default function Page() {
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [providerAccountScreen, setProviderAccountScreen] = useState<Provider>('GPT');
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [previewMode] = useState(false);
   const [collaborationEnabled, setCollaborationEnabled] = useState(false);
+  const [skills, setSkills] = useState<ProductSkill[]>([]);
+
+  const loadSkills = async () => {
+    try {
+      const payload = await apiJson<{ skills: ProductSkill[] }>('/api/skills');
+      setSkills(payload.skills);
+    } catch {
+      // fallback
+    }
+  };
+
+  const synthesizeSkill = async () => {
+    if (!selectedThinking) return;
+    try {
+      setIsSaving(true);
+      const payload = await apiJson<{ skill: ProductSkill }>(`/api/thinkings/${selectedThinking.id}/skills/synthesize`, {
+        method: 'POST',
+      });
+      setSkills((prev) => [payload.skill, ...prev.filter((s) => s.id !== payload.skill.id)]);
+      setApiMessage(`✨ '${payload.skill.name}' 스킬이 성공적으로 합성되었습니다!`);
+      await loadConversation(selectedThinking.id);
+    } catch (err) {
+      setApiMessage(err instanceof Error ? err.message : '스킬 합성에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+      window.setTimeout(() => setApiMessage(''), 3500);
+    }
+  };
 
   const loadThinkings = async () => {
     const payload = await apiJson<{ thinkings: ProductThinking[] }>('/api/thinkings');
@@ -2563,10 +2677,12 @@ export default function Page() {
         setNickname(activeUser.nickname);
         setSelectedInterests(activeUser.interests);
         const loadedThinkings = await loadThinkings();
+        void loadSkills();
         setSelectedProvider(loadedThinkings[0]?.aiProvider ?? activeUser.defaultAiProvider);
         if (loadedThinkings[0]) await loadConversation(loadedThinkings[0].id);
         await loadInsights();
         await loadAiConnections();
+        await loadSkills();
       } catch (error) {
         if (!cancelled) {
           setApiMessage(error instanceof Error ? error.message : '데모 세션을 준비하지 못했습니다.');
@@ -2960,6 +3076,7 @@ export default function Page() {
           conversationMessages={conversationMessages}
           onContinueThinking={continueThinking}
           onDeleteThinking={deleteThinking}
+          onSynthesizeSkill={synthesizeSkill}
           isSaving={isSaving}
           aiAccounts={aiAccounts}
           selectedModel={selectedModel}
@@ -3026,7 +3143,7 @@ export default function Page() {
       );
     }
 
-    return <ProfileScreen selectedProvider={selectedProvider} setScreen={setScreen} aiAccounts={aiAccounts} aiConnections={aiConnections} onTogglePreview={() => setPreviewMode(p => !p)} />;
+    return <ProfileScreen selectedProvider={selectedProvider} setScreen={setScreen} aiAccounts={aiAccounts} aiConnections={aiConnections} />;
   };
 
   const showDesktopWorkspace = !['splash', 'welcome', 'intro', 'login', 'nickname', 'interests', 'provider'].includes(screen);
@@ -3038,7 +3155,7 @@ export default function Page() {
         <PhoneFrame>
           {renderScreen()}
         </PhoneFrame>
-        {showDesktopWorkspace && <DesktopContext screen={screen} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedThinking={selectedThinking} thinkings={thinkings} messages={conversationMessages} decisions={selectedDecisions} events={selectedEvents} onSelectModel={setSelectedModel} onSelectThinking={openThinking} onSelectSource={openConversationSource} />}
+        {showDesktopWorkspace && <DesktopContext screen={screen} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedThinking={selectedThinking} thinkings={thinkings} messages={conversationMessages} decisions={selectedDecisions} events={selectedEvents} skills={skills} onSynthesizeSkill={synthesizeSkill} onSelectModel={setSelectedModel} onSelectThinking={openThinking} onSelectSource={openConversationSource} />}
         {apiMessage && (
           <div className="fixed bottom-6 left-1/2 z-50 max-w-[320px] -translate-x-1/2 rounded-full px-4 py-2 text-center text-[12px] font-bold text-white shadow-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
             {apiMessage}
