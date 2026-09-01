@@ -7,13 +7,16 @@ const examples = ['새 사업 아이디어를 정리하고 싶어요', '이직�
 const models = ['GPT', 'Claude', 'Gemini'];
 
 function finishOnboarding(firstThought?: string) {
-  if (firstThought?.trim()) {
-    window.localStorage.setItem('think_along_first_thought', firstThought.trim());
-  }
-  window.localStorage.setItem('think_along_onboarding_v1', 'done');
-  document.cookie = 'think_along_onboarding_v1=done; path=/; max-age=31536000; samesite=lax';
-  window.location.href = '/';
+  try {
+    if (firstThought?.trim()) {
+      window.localStorage.setItem('think_along_first_thought', firstThought.trim());
+    }
+    window.localStorage.setItem('think_along_onboarding_v1', 'done');
+  } catch {}
+  document.cookie = 'think_along_onboarding_v1=done; path=/; max-age=31536000; SameSite=Lax';
+  window.location.replace('/?onboarding=complete');
 }
+
 
 export default function StartPage() {
   const [step, setStep] = useState(0);

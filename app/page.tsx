@@ -2698,6 +2698,16 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    try {
+      const savedThought = window.localStorage.getItem('think_along_first_thought');
+      if (savedThought) {
+        setPrompt(savedThought);
+        window.localStorage.removeItem('think_along_first_thought');
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     window.setTimeout(() => {
       try {
         window.localStorage.removeItem('think_along_ai_accounts');
@@ -2719,6 +2729,8 @@ export default function Page() {
       }
     }, 0);
   }, []);
+
+
 
   useEffect(() => {
     if (!accountsLoaded) return;
