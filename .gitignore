@@ -34,6 +34,8 @@ pnpm-debug.log*
 .idea/
 AGENTS.md
 CLAUDE.md
+.cursorrules
+.windsurfrules
 
 # OS metadata
 .DS_Store
@@ -48,3 +50,9 @@ ui-prototype/dist/
 
 # Scratch directory
 scratch/
+
+# Python test cache
+__pycache__/
+
+# Cloud runtime state
+data/talo-cloud.sqlite*

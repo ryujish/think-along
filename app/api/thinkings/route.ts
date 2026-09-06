@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       aiProvider,
       selectedConnectionId: selection.connectionId,
       selectedModel: selection.model,
-      contextPolicy: { allowedProviders: validProviders, includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' },
+      contextPolicy: { allowedProviders: validProviders, includeDecisions: true, includeRecentMessages: true, routingMode: 'manual', activeSkillIds: [] },
       status: 'active',
       favorite: false,
       tags: ai.tags,

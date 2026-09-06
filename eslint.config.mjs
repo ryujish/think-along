@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-talo-web/**",
+    ".next-talo-cloud/**",
     ".next-api/**",
     ".next-front/**",
     "__MACOSX/**",

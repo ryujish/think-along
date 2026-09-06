@@ -69,14 +69,15 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (body?.contextPolicy && (
     !Array.isArray(body.contextPolicy.allowedProviders) ||
     body.contextPolicy.allowedProviders.some((provider) => !validProviders.includes(provider)) ||
+    (body.contextPolicy.activeSkillIds !== undefined && !Array.isArray(body.contextPolicy.activeSkillIds)) ||
     typeof body.contextPolicy.includeDecisions !== 'boolean' ||
     typeof body.contextPolicy.includeRecentMessages !== 'boolean' ||
     body.contextPolicy.routingMode !== 'manual'
   )) return NextResponse.json({ error: { code: 'INVALID_CONTEXT_POLICY', message: 'Context 권한 설정을 확인해주세요.' } }, { status: 400 });
 
-  const thinking = await updateDb((db) => {
+  const result = await updateDb((db) => {
     const item = db.thinkings.find((candidate) => candidate.id === id && candidate.userId === auth.user.id);
-    if (!item) return null;
+    if (!item) return { error: 'not_found' as const };
 
     item.title = body?.title?.trim() || item.title;
     item.tags = body?.tags ?? item.tags;
@@ -87,19 +88,26 @@ export async function PATCH(request: Request, context: RouteContext) {
       item.selectedConnectionId = body!.selectedConnectionId!.trim();
       item.selectedModel = body!.selectedModel!.trim();
     }
-    if (body?.contextPolicy) item.contextPolicy = body.contextPolicy;
+    if (body?.contextPolicy) {
+      const activeSkillIds = body.contextPolicy.activeSkillIds ?? [];
+      if (activeSkillIds.some((skillId) => !(db.skills ?? []).some((skill) => skill.id === skillId && skill.userId === auth.user.id && skill.status === 'active'))) return { error: 'invalid_skill' as const };
+      item.contextPolicy = body.contextPolicy;
+    }
     item.updatedAt = new Date().toISOString();
-    return item;
+    return { thinking: item };
   });
 
-  if (!thinking) {
+  if ('error' in result && result.error === 'invalid_skill') {
+    return NextResponse.json({ error: { code: 'INVALID_ACTIVE_WAY', message: '활성화된 나의 방식만 적용할 수 있습니다.' } }, { status: 400 });
+  }
+  if ('error' in result) {
     return NextResponse.json(
       { error: { code: 'THINKING_NOT_FOUND', message: 'Thinking을 찾을 수 없습니다.' } },
       { status: 404 },
     );
   }
 
-  return NextResponse.json({ thinking });
+  return NextResponse.json({ thinking: result.thinking });
 }
 
 export async function DELETE(request: Request, context: RouteContext) {

@@ -5,7 +5,7 @@ export const tools: ToolDefinition[] = [
 ];
 
 export const skills: SkillDefinition[] = [
-  { id: 'decision-review', name: '확정 결정 검토', agentRole: 'critic', allowedTools: ['session.context.inspect'], description: '현재 세션의 확정 결정 충돌 여부 및 근거를 검토합니다.' },
+  { id: 'decision-review', name: '확정 결정 검토', agentRole: 'critic', allowedTools: ['session.context.inspect'], status: 'active', version: 1, description: '현재 세션의 확정 결정 충돌 여부 및 근거를 검토합니다.' },
 ];
 
 export function getSkills(db?: AppDatabase): SkillDefinition[] {
@@ -23,4 +23,3 @@ export function inspectSessionContext(db: AppDatabase, sessionId: string) {
     snapshots: db.contextSnapshots.filter((item) => item.thinkalongSessionId === sessionId).length,
   };
 }
-

@@ -38,7 +38,11 @@
     ".next-front/types/**/*.ts",
     ".next-front/dev/types/**/*.ts",
     ".next-api/types/**/*.ts",
-    ".next-api/dev/types/**/*.ts"
+    ".next-api/dev/types/**/*.ts",
+    ".next-talo-web/types/**/*.ts",
+    ".next-talo-web/dev/types/**/*.ts",
+    ".next-talo-cloud/types/**/*.ts",
+    ".next-talo-cloud/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

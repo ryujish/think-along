@@ -8,4 +8,6 @@ assert.equal(cacheContext(packet1, 'GPT', 'a1', 'm1'), packet1);
 assert.equal(cacheContext({ ...packet1 }, 'GPT', 'a1', 'm1'), packet1);
 assert.equal(cacheContext(packet2, 'GPT', 'a1', 'm1'), packet2);
 assert.notEqual(cacheContext({ ...packet1 }, 'GPT', 'a1', 'm1'), packet1);
+const wayPacket = { ...packet2, system: 'active way' };
+assert.equal(cacheContext(wayPacket, 'GPT', 'a1', 'm1'), wayPacket);
 console.log('P1-1 context cache contract passed');

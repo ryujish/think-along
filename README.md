@@ -43,3 +43,12 @@ The previous Think Along prototype remains untouched in:
 
 - `/Users/choisunghoon/Documents/Codex/2026-07-28/new-chat-2/work/source`
 - `/Users/choisunghoon/Documents/Codex/2026-07-28/new-chat-2/outputs/think-along-prototype-snapshot`
+
+## 로컬·서버 동기화와 원격 작업 v0.3
+
+개발 설계와 검증 결과: [TALO_LOCAL_CLOUD_REMOTE_DESIGN_v0.3.md](docs/TALO_LOCAL_CLOUD_REMOTE_DESIGN_v0.3.md).
+
+- 로컬 웹: `npm run web:local` → http://127.0.0.1:3002/projects
+- 서버 모드 개발 실행: `npm run web:cloud` → http://127.0.0.1:3003/projects?source=cloud
+- 원격 통합 검증 포함: `TALO_REMOTE_E2E=1 npm run verify`
+- 서버 모드는 Node 22.13+와 영속 디스크가 필요합니다. 운영 도메인은 별도 배포해야 합니다.

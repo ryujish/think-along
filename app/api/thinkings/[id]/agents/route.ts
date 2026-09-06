@@ -19,7 +19,7 @@ export async function POST(request: Request, context: RouteContext) {
   const body = (await request.json().catch(() => null)) as { prompt?: string; role?: InternalAgentRole; skillId?: SkillId; apiKey?: string } | null;
   const db = await readDb();
   const availableSkills = getSkills(db);
-  const skill = body?.skillId ? availableSkills.find((item) => item.id === body.skillId) : undefined;
+  const skill = body?.skillId ? availableSkills.find((item) => item.id === body.skillId && item.status === 'active' && (!item.userId || item.userId === auth.user.id)) : undefined;
   const role = skill?.agentRole ?? body?.role;
   if (!body?.prompt?.trim() || !role || !roles.includes(role) || (body.skillId && !skill)) {
     return NextResponse.json({ error: { code: 'INVALID_AGENT_REQUEST', message: '역할과 요청을 확인해주세요.' } }, { status: 400 });

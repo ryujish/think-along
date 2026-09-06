@@ -13,5 +13,5 @@ export async function GET(request: Request, context: RouteContext) {
   if (!db.thinkings.some((item) => item.id === id && item.userId === auth.user.id)) {
     return NextResponse.json({ error: { code: 'THINKING_NOT_FOUND', message: 'Thinking을 찾을 수 없습니다.' } }, { status: 404 });
   }
-  return NextResponse.json({ tools, skills: getSkills(db) });
+  return NextResponse.json({ tools, skills: getSkills(db).filter((skill) => !skill.userId || skill.userId === auth.user.id) });
 }

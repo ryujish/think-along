@@ -1,6 +1,6 @@
 export type AuthProvider = 'email' | 'google' | 'apple';
-export type AiProvider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen' | 'Hermes Local';
-export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'xai' | 'moonshot' | 'opencode' | 'local';
+export type AiProvider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen';
+export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'xai' | 'moonshot' | 'opencode';
 export type ConnectionStatus = 'unknown' | 'available' | 'unavailable';
 
 export type ModelCapability = {
@@ -113,6 +113,7 @@ export type ContextPolicy = {
   includeDecisions: boolean;
   includeRecentMessages: boolean;
   routingMode: RoutingMode;
+  activeSkillIds?: SkillId[];
 };
 
 export type InternalAgentRole = 'thinker' | 'critic' | 'synthesizer';
@@ -131,12 +132,17 @@ export type SkillId = 'decision-review' | string;
 
 export type SkillDefinition = {
   id: SkillId;
+  userId?: string;
   name: string;
   description?: string;
   guidelines?: string[];
   agentRole: InternalAgentRole;
   allowedTools: ToolId[];
+  status?: 'draft' | 'active' | 'archived';
+  version?: number;
   synthesizedFromSessionId?: string;
+  sourceDecisionIds?: string[];
+  supersedesSkillId?: SkillId;
   createdAt?: string;
 };
 
@@ -218,6 +224,63 @@ export type ContextSnapshot = {
   createdAt: string;
 };
 
+export type AutomationStatus = 'active' | 'running' | 'pending_approval' | 'paused' | 'failed';
+
+export interface ApprovalRequest {
+  id: string;
+  title: string;
+  automationId: string;
+  automationName: string;
+  category: 'invoice' | 'email' | 'schedule' | 'contract';
+  amount?: number;
+  provider: string;
+  source: string;
+  policyTriggered: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  summary: string;
+  payloadDetails: Record<string, string | number | boolean>;
+}
+
+export interface AutomationItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  status: AutomationStatus;
+  trigger: string;
+  inputSource: string;
+  actionPipeline: string;
+  connectedWay?: string;
+  approvalPolicy: string;
+  thresholdAmount?: number;
+  lastRunAt: string;
+  lastRunStatus: 'success' | 'failed' | 'running' | 'pending';
+  nextRunAt: string;
+  executionCount: number;
+  successRate: number;
+  enabled: boolean;
+}
+
+export interface TimelineEvent {
+  id: string;
+  time: string;
+  title: string;
+  automationName: string;
+  status: 'completed' | 'running' | 'waiting' | 'failed';
+  details: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  automationName: string;
+  action: string;
+  actor: string;
+  result: 'approved' | 'rejected' | 'auto_executed' | 'failed';
+  details: string;
+}
+
 export type AppDatabase = {
   users: User[];
   sessions: Session[];
@@ -232,6 +295,10 @@ export type AppDatabase = {
   toolRuns: ToolRun[];
   subAgentRuns: SubAgentRun[];
   skills?: SkillDefinition[];
+  automations?: AutomationItem[];
+  approvalRequests?: ApprovalRequest[];
+  timelineEvents?: TimelineEvent[];
+  auditLogs?: AuditEntry[];
 };
 
 export type ApiError = {
@@ -240,3 +307,4 @@ export type ApiError = {
     message: string;
   };
 };
+

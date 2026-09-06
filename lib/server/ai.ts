@@ -1,5 +1,4 @@
 import type { AiProvider, ContextPacket, ModelCapability, ProviderCatalogItem, ProviderId } from '@/lib/types';
-import { parseHermesOutput, formatHermesSystemInstruction } from '@/lib/server/hermes-protocol';
 
 export type GenerateThinkingInput = {
   prompt: string;
@@ -37,7 +36,6 @@ const providerConfig: Array<{
   { id: 'xai', label: 'Grok', env: 'XAI_API_KEY', modelEnv: 'XAI_MODEL', defaultModel: 'grok-4.6', models: [{ id: 'grok-4.6', text: true, vision: true, streaming: true }] },
   { id: 'moonshot', label: 'Kimi', env: 'MOONSHOT_API_KEY', modelEnv: 'MOONSHOT_MODEL', defaultModel: 'kimi-k3', models: [{ id: 'kimi-k3', text: true, vision: true, streaming: true }, { id: 'kimi-k2.6', text: true, vision: true, streaming: true }] },
   { id: 'opencode', label: 'OpenCode Zen', env: 'OPENCODE_ZEN_API_KEY', modelEnv: 'OPENCODE_ZEN_MODEL', defaultModel: 'x-preview-f-free', models: [{ id: 'x-preview-f-free', text: true, streaming: true }] },
-  { id: 'local', label: 'Hermes Local', env: 'HERMES_API_KEY', modelEnv: 'HERMES_MODEL', defaultModel: 'hermes-3-llama-3.1-8b', models: [{ id: 'hermes-3-llama-3.1-8b', text: true, streaming: true, tools: true }, { id: 'hermes-3-llama-3.1-70b', text: true, streaming: true, tools: true }] },
 ];
 
 export function getProviderCatalog(): ProviderCatalogItem[] {
@@ -87,7 +85,6 @@ function localAiResult(input: GenerateThinkingInput): AiResult {
     Grok: '실시간 추론 중심',
     Kimi: '긴 문맥과 에이전트 추론 중심',
     'OpenCode Zen': '검증된 다중 모델 전환 중심',
-    'Hermes Local': '로컬 프라이버시 및 오프라인 추론 중심',
   };
   const tone = providerTone[input.provider] || '종합 분석 중심';
 
@@ -108,23 +105,19 @@ function normalizeJsonText(text: string) {
 }
 
 function parseOpenAiText(text: string, input: GenerateThinkingInput): AiResult {
-  // Check for Hermes-style scratchpad & tool tags
-  const parsedHermes = parseHermesOutput(text);
-  const targetText = parsedHermes.content || text;
-
   try {
-    const parsed = JSON.parse(normalizeJsonText(targetText)) as Partial<AiResult>;
+    const parsed = JSON.parse(normalizeJsonText(text)) as Partial<AiResult>;
     return {
       title: parsed.title || localAiResult(input).title,
-      answer: parsed.answer || targetText,
-      insight: parsed.insight || (parsedHermes.scratchPad ? `추론 반영: ${parsedHermes.scratchPad.slice(0, 60)}...` : 'AI가 질문의 핵심 패턴을 분석했습니다.'),
+      answer: parsed.answer || text,
+      insight: parsed.insight || 'AI가 질문의 핵심 패턴을 분석했습니다.',
       tags: parsed.tags?.length ? parsed.tags : ['AI', input.provider],
     };
   } catch {
     return {
       title: localAiResult(input).title,
-      answer: targetText,
-      insight: parsedHermes.scratchPad ? `추론 반영: ${parsedHermes.scratchPad.slice(0, 60)}...` : 'AI가 질문의 핵심 패턴을 분석했습니다.',
+      answer: text,
+      insight: 'AI가 질문의 핵심 패턴을 분석했습니다.',
       tags: ['AI', input.provider],
     };
   }
@@ -136,51 +129,7 @@ export async function generateThinking(input: GenerateThinkingInput): Promise<Ai
   if (input.provider === 'Grok') return generateWithGrok(input);
   if (input.provider === 'Kimi') return generateWithCompatibleChat(input, 'https://api.moonshot.ai/v1/chat/completions', process.env.MOONSHOT_API_KEY, process.env.MOONSHOT_MODEL || 'kimi-k3');
   if (input.provider === 'OpenCode Zen') return generateWithOpenCodeZen(input);
-  if (input.provider === 'Hermes Local') return generateWithHermesLocal(input);
   return generateWithOpenAi(input);
-}
-
-async function generateWithHermesLocal(input: GenerateThinkingInput): Promise<AiResult> {
-  const localUrl = process.env.HERMES_API_URL || 'http://localhost:11434/v1/chat/completions';
-  const apiKey = input.apiKey || process.env.HERMES_API_KEY || 'local';
-  const model = input.model || process.env.HERMES_MODEL || 'hermes-3-llama-3.1-8b';
-
-  const systemInstruction = [
-    'You generate Think Along records. Return compact JSON with title, answer, insight, and tags. Korean output.',
-    input.context.system,
-    formatHermesSystemInstruction({}),
-  ].join('\n\n');
-
-  try {
-    const response = await fetch(localUrl, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemInstruction },
-          { role: 'user', content: JSON.stringify(input.context) },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      if (input.apiKey) {
-        const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(payload?.error?.message ?? `Hermes Local API 요청에 실패했습니다. (${response.status})`);
-      }
-      return localAiResult(input);
-    }
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const text = data.choices?.[0]?.message?.content ?? '';
-    return text ? parseOpenAiText(text, input) : localAiResult(input);
-  } catch (error) {
-    if (input.apiKey && !(error instanceof Error && error.message.includes('fetch failed'))) {
-      throw error;
-    }
-    return localAiResult(input);
-  }
 }
 
 async function generateWithGrok(input: GenerateThinkingInput): Promise<AiResult> {

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   if (!auth.user) return auth.response;
 
   const db = await readDb();
-  const skills = getAllSkills(db);
+  const skills = getAllSkills(db).filter((skill) => skill.userId === auth.user.id);
 
   return NextResponse.json({ skills });
 }
@@ -37,11 +37,14 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const newSkill: SkillDefinition = {
     id: `skill_${randomUUID().slice(0, 8)}`,
+    userId: auth.user.id,
     name: body.name.trim(),
     description: body.description?.trim(),
     guidelines: body.guidelines ?? [],
     agentRole: body.agentRole,
     allowedTools: body.allowedTools ?? ['session.context.inspect'],
+    status: 'draft',
+    version: 1,
     createdAt: now,
   };
 

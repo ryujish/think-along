@@ -60,6 +60,7 @@ export async function POST(request: Request, context: RouteContext) {
     includeDecisions: thinking.contextPolicy.includeDecisions,
     includeRecentMessages: thinking.contextPolicy.includeRecentMessages,
     summary: thinking.sessionSummary,
+    skills: (db.skills ?? []).filter((skill) => thinking.contextPolicy.activeSkillIds?.includes(skill.id)),
     prompt: body.prompt,
   });
   const provider = validProviders.includes(body.aiProvider as AiProvider) ? body.aiProvider! : thinking.aiProvider;

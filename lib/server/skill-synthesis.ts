@@ -76,14 +76,18 @@ export function synthesizeSkillFromSession(
   const skillId = `skill_${randomUUID().slice(0, 8)}`;
   const synthesizedSkill: SkillDefinition = {
     id: skillId,
-    name: input.name?.trim() || `${thinking.title} 노하우 스킬`,
+    userId: input.userId,
+    name: input.name?.trim() || `${thinking.title} 작업 방식`,
     description:
       input.description?.trim() ||
       `세션 '${thinking.title}'의 ${confirmedDecisions.length}개 확정 결정 및 대화 경험에서 합성된 재사용 스킬입니다.`,
     guidelines,
     agentRole: input.role || 'synthesizer',
     allowedTools,
+    status: 'draft',
+    version: 1,
     synthesizedFromSessionId: input.sessionId,
+    sourceDecisionIds: confirmedDecisions.map((decision) => decision.id),
     createdAt: now,
   };
 
