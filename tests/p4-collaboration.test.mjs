@@ -21,4 +21,15 @@ calls.length = 0;
 const single = await generateCollaborativeThinking({ prompt: '질문', context, primary }, generate, instruction);
 assert.equal(calls.length, 1);
 assert.deepEqual(single.contributions, []);
+for (const failedProvider of [primary.provider, collaborator.provider]) {
+  const attempted = [];
+  await assert.rejects(generateCollaborativeThinking({ prompt: '질문', context, primary, collaborator }, async (input) => {
+    attempted.push(input.provider);
+    if (input.provider === failedProvider) throw new Error('participant failed');
+    return { title: 't', answer: 'partial answer', insight: 'i', tags: [] };
+  }, instruction), /participant failed/);
+  assert.equal(attempted.length, 2, 'an incomplete collaboration must not be synthesized as a full success');
+}
+const withKeys = await generateCollaborativeThinking({ prompt: '질문', context, primary: { ...primary, apiKey: 'private-primary' }, collaborator: { ...collaborator, apiKey: 'private-collaborator' } }, generate, instruction);
+assert.ok(withKeys.contributions.every((item) => !('apiKey' in item)), 'execution evidence must not carry credentials');
 console.log('P4 collaboration loop passed');

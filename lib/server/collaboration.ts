@@ -8,7 +8,7 @@ export type CollaborationModel = {
   apiKey?: string;
 };
 
-export type CollaborationContribution = CollaborationModel & {
+export type CollaborationContribution = Omit<CollaborationModel, 'apiKey'> & {
   answer: string;
 };
 
@@ -29,16 +29,17 @@ export async function generateCollaborativeThinking(input: {
   }
 
   const models = [input.primary, input.collaborator];
-  const settled = await Promise.allSettled(models.map((model) => generate({
+  const results = await Promise.all(models.map((model) => generate({
     ...model,
     prompt: input.prompt,
     context: { ...input.context, system: `${input.context.system}\n${instruction('thinker')}` },
   })));
-  const contributions = settled.flatMap((item, index) => item.status === 'fulfilled'
-    ? [{ ...models[index], answer: item.value.answer }]
-    : []);
-
-  if (!contributions.length) throw (settled[0] as PromiseRejectedResult).reason;
+  const contributions = results.map((result, index) => ({
+    provider: models[index].provider,
+    connectionId: models[index].connectionId,
+    model: models[index].model,
+    answer: result.answer,
+  }));
 
   const synthesisContext: ContextPacket = {
     ...input.context,

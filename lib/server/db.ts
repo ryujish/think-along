@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type {
   AiProvider,
@@ -13,6 +14,7 @@ import type {
 } from '@/lib/types';
 
 const dbPath = path.join(process.cwd(), 'data', 'db.json');
+const writes = globalThis as typeof globalThis & { thinkAlongDbWrite?: Promise<unknown> };
 
 const now = () => new Date().toISOString();
 
@@ -342,70 +344,97 @@ const seedDatabase = (): AppDatabase => ({
 export async function readDb(): Promise<AppDatabase> {
   await mkdir(path.dirname(dbPath), { recursive: true });
 
+  let raw: string;
   try {
-    const raw = await readFile(dbPath, 'utf8');
-    const db = JSON.parse(raw) as AppDatabase;
-    db.providerConnections ??= [];
-    db.decisions ??= [];
-    db.contextSnapshots ??= [];
-    db.events ??= [];
-    db.toolRuns ??= [];
-    db.subAgentRuns ??= [];
-    db.skills ??= [];
-    db.automations ??= [...defaultAutomations];
-    db.approvalRequests ??= [...defaultApprovalRequests];
-    db.timelineEvents ??= [...defaultTimelineEvents];
-    db.auditLogs ??= [...defaultAuditLogs];
-    for (const user of db.users) {
-      if ((user.defaultAiProvider as string) === 'OpenRouter') user.defaultAiProvider = 'OpenCode Zen';
-      if ((user.defaultAiProvider as string) === 'MiMo') user.defaultAiProvider = 'Kimi';
-      if ((user.defaultAiProvider as string) === 'Hermes Local') user.defaultAiProvider = 'GPT';
+    raw = await readFile(dbPath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    await persistDb(seedDatabase(), true);
+    raw = await readFile(dbPath, 'utf8');
+  }
+  const db = JSON.parse(raw) as AppDatabase;
+  db.providerConnections ??= [];
+  db.decisions ??= [];
+  db.contextSnapshots ??= [];
+  db.events ??= [];
+  db.toolRuns ??= [];
+  db.subAgentRuns ??= [];
+  db.skills ??= [];
+  db.automations ??= [...defaultAutomations];
+  db.approvalRequests ??= [...defaultApprovalRequests];
+  db.timelineEvents ??= [...defaultTimelineEvents];
+  db.auditLogs ??= [...defaultAuditLogs];
+  for (const user of db.users) {
+    if ((user.defaultAiProvider as string) === 'OpenRouter') user.defaultAiProvider = 'OpenCode Zen';
+    if ((user.defaultAiProvider as string) === 'MiMo') user.defaultAiProvider = 'Kimi';
+    if ((user.defaultAiProvider as string) === 'Hermes Local') user.defaultAiProvider = 'GPT';
+  }
+  for (const thinking of db.thinkings) {
+    if ((thinking.aiProvider as string) === 'OpenRouter') thinking.aiProvider = 'OpenCode Zen';
+    if ((thinking.aiProvider as string) === 'MiMo') thinking.aiProvider = 'Kimi';
+    if ((thinking.aiProvider as string) === 'Hermes Local') thinking.aiProvider = 'GPT';
+    thinking.thinkalongSessionId = thinking.id;
+    const selection = defaultSelections[thinking.aiProvider] || defaultSelections.GPT;
+    thinking.selectedConnectionId ??= selection.connectionId;
+    thinking.selectedModel ??= selection.model;
+    thinking.contextPolicy ??= { allowedProviders: ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' };
+    thinking.contextPolicy.allowedProviders = thinking.contextPolicy.allowedProviders.map((provider) => (provider as string) === 'OpenRouter' ? 'OpenCode Zen' : (provider as string) === 'MiMo' ? 'Kimi' : provider);
+    if (!thinking.contextPolicy.allowedProviders.includes('OpenCode Zen')) thinking.contextPolicy.allowedProviders.push('OpenCode Zen');
+    if (!thinking.contextPolicy.allowedProviders.includes('Grok')) thinking.contextPolicy.allowedProviders.push('Grok');
+    if (!thinking.contextPolicy.allowedProviders.includes('Kimi')) thinking.contextPolicy.allowedProviders.push('Kimi');
+    thinking.contextPolicy.allowedProviders = thinking.contextPolicy.allowedProviders.filter((provider) => (provider as string) !== 'Hermes Local');
+    thinking.contextPolicy.routingMode = 'manual';
+  }
+  for (const message of db.messages) {
+    message.thinkalongSessionId ??= message.thinkingId;
+    if ((message.aiProvider as string) === 'OpenRouter') message.aiProvider = 'OpenCode Zen';
+    if ((message.aiProvider as string) === 'Hermes Local') message.aiProvider = 'GPT';
+  }
+  for (const attachment of db.attachments) attachment.thinkalongSessionId ??= attachment.thinkingId;
+  for (const skill of db.skills) {
+    skill.userId ??= db.thinkings.find((thinking) => thinking.thinkalongSessionId === skill.synthesizedFromSessionId)?.userId;
+    skill.status ??= skill.id === 'decision-review' ? 'active' : 'draft';
+    skill.version ??= 1;
+  }
+  return db;
+}
+
+async function persistDb(db: AppDatabase, initialize = false): Promise<void> {
+  await mkdir(path.dirname(dbPath), { recursive: true });
+  const temporary = `${dbPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify(db, null, 2), { flag: 'wx', mode: 0o600, flush: true });
+    if (initialize) {
+      // Linking publishes a complete seed only if another reader has not initialized the database.
+      await link(temporary, dbPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
+      });
+    } else {
+      await rename(temporary, dbPath);
     }
-    for (const thinking of db.thinkings) {
-      if ((thinking.aiProvider as string) === 'OpenRouter') thinking.aiProvider = 'OpenCode Zen';
-      if ((thinking.aiProvider as string) === 'MiMo') thinking.aiProvider = 'Kimi';
-      if ((thinking.aiProvider as string) === 'Hermes Local') thinking.aiProvider = 'GPT';
-      thinking.thinkalongSessionId = thinking.id;
-      const selection = defaultSelections[thinking.aiProvider] || defaultSelections.GPT;
-      thinking.selectedConnectionId ??= selection.connectionId;
-      thinking.selectedModel ??= selection.model;
-      thinking.contextPolicy ??= { allowedProviders: ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' };
-      thinking.contextPolicy.allowedProviders = thinking.contextPolicy.allowedProviders.map((provider) => (provider as string) === 'OpenRouter' ? 'OpenCode Zen' : (provider as string) === 'MiMo' ? 'Kimi' : provider);
-      if (!thinking.contextPolicy.allowedProviders.includes('OpenCode Zen')) thinking.contextPolicy.allowedProviders.push('OpenCode Zen');
-      if (!thinking.contextPolicy.allowedProviders.includes('Grok')) thinking.contextPolicy.allowedProviders.push('Grok');
-      if (!thinking.contextPolicy.allowedProviders.includes('Kimi')) thinking.contextPolicy.allowedProviders.push('Kimi');
-      thinking.contextPolicy.allowedProviders = thinking.contextPolicy.allowedProviders.filter((provider) => (provider as string) !== 'Hermes Local');
-      thinking.contextPolicy.routingMode = 'manual';
-    }
-    for (const message of db.messages) {
-      message.thinkalongSessionId ??= message.thinkingId;
-      if ((message.aiProvider as string) === 'OpenRouter') message.aiProvider = 'OpenCode Zen';
-      if ((message.aiProvider as string) === 'Hermes Local') message.aiProvider = 'GPT';
-    }
-    for (const attachment of db.attachments) attachment.thinkalongSessionId ??= attachment.thinkingId;
-    for (const skill of db.skills) {
-      skill.userId ??= db.thinkings.find((thinking) => thinking.thinkalongSessionId === skill.synthesizedFromSessionId)?.userId;
-      skill.status ??= skill.id === 'decision-review' ? 'active' : 'draft';
-      skill.version ??= 1;
-    }
-    return db;
-  } catch {
-    const seeded = seedDatabase();
-    await writeDb(seeded);
-    return seeded;
+  } finally {
+    await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
   }
 }
 
 export async function writeDb(db: AppDatabase): Promise<void> {
-  await mkdir(path.dirname(dbPath), { recursive: true });
-  await writeFile(dbPath, JSON.stringify(db, null, 2));
+  const write = (writes.thinkAlongDbWrite ?? Promise.resolve()).then(() => persistDb(db));
+  writes.thinkAlongDbWrite = write.catch(() => {});
+  return write;
 }
 
 export async function updateDb<T>(mutator: (db: AppDatabase) => T | Promise<T>): Promise<T> {
-  const db = await readDb();
-  const result = await mutator(db);
-  await writeDb(db);
-  return result;
+  // shortcut: one server process owns JSON writes; use database transactions before running multiple instances.
+  const update = (writes.thinkAlongDbWrite ?? Promise.resolve()).then(async () => {
+    const db = await readDb();
+    const result = await mutator(db);
+    await persistDb(db);
+    return result;
+  });
+  writes.thinkAlongDbWrite = update.catch(() => {});
+  return update;
 }
 
 export function publicUser(user: User) {

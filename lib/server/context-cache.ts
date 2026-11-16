@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 const cache = new Map<string, ContextPacket>();
 
 const key = (packet: ContextPacket, provider: AiProvider, connectionId: string, model: string) =>
-  [packet.thinkalongSessionId, packet.version, createHash('sha256').update(packet.system).digest('hex').slice(0, 12), provider, connectionId, model].join(':');
+  [packet.thinkalongSessionId, packet.version, createHash('sha256').update(JSON.stringify(packet)).digest('hex'), provider, connectionId, model].join(':');
 
 export function cacheContext(packet: ContextPacket, provider: AiProvider, connectionId: string, model: string) {
   const currentKey = key(packet, provider, connectionId, model);

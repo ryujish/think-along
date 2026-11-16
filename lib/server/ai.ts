@@ -74,26 +74,9 @@ export function resolveProviderSelection(provider: AiProvider, connectionId?: st
   };
 }
 
-function localAiResult(input: GenerateThinkingInput): AiResult {
-  const compactPrompt = input.prompt.trim().replace(/\s+/g, ' ');
-  const title = compactPrompt.length > 24 ? `${compactPrompt.slice(0, 24)}...` : compactPrompt || '새 Thinking';
-
-  const providerTone: Record<AiProvider, string> = {
-    GPT: '실행 계획 중심',
-    Claude: '맥락 분석 중심',
-    Gemini: '자료 탐색 중심',
-    Grok: '실시간 추론 중심',
-    Kimi: '긴 문맥과 에이전트 추론 중심',
-    'OpenCode Zen': '검증된 다중 모델 전환 중심',
-  };
-  const tone = providerTone[input.provider] || '종합 분석 중심';
-
-  return {
-    title,
-    answer: `${tone}으로 정리했습니다. 핵심 문제를 정의하고, 현재 맥락을 바탕으로 다음 액션을 3단계로 나눕니다. 1) 목표와 제약을 명확히 하기 2) 선택 가능한 대안을 비교하기 3) 가장 작은 실험부터 실행하기.`,
-    insight: `이 질문은 ${tone} 사고 패턴에 가깝습니다. 반복되면 장기 목표나 관심사 변화 분석에 반영됩니다.`,
-    tags: ['AI', input.provider, 'Thinking'],
-  };
+function thinkingTitle(prompt: string): string {
+  const compactPrompt = prompt.trim().replace(/\s+/g, ' ');
+  return compactPrompt.length > 24 ? `${compactPrompt.slice(0, 24)}...` : compactPrompt || '새 Thinking';
 }
 
 function normalizeJsonText(text: string) {
@@ -105,17 +88,18 @@ function normalizeJsonText(text: string) {
 }
 
 function parseOpenAiText(text: string, input: GenerateThinkingInput): AiResult {
+  if (!text.trim()) throw new Error(`${input.provider}에서 빈 응답을 받았습니다. 다시 시도해주세요.`);
   try {
     const parsed = JSON.parse(normalizeJsonText(text)) as Partial<AiResult>;
     return {
-      title: parsed.title || localAiResult(input).title,
+      title: parsed.title || thinkingTitle(input.prompt),
       answer: parsed.answer || text,
       insight: parsed.insight || 'AI가 질문의 핵심 패턴을 분석했습니다.',
       tags: parsed.tags?.length ? parsed.tags : ['AI', input.provider],
     };
   } catch {
     return {
-      title: localAiResult(input).title,
+      title: thinkingTitle(input.prompt),
       answer: text,
       insight: 'AI가 질문의 핵심 패턴을 분석했습니다.',
       tags: ['AI', input.provider],
@@ -134,8 +118,9 @@ export async function generateThinking(input: GenerateThinkingInput): Promise<Ai
 
 async function generateWithGrok(input: GenerateThinkingInput): Promise<AiResult> {
   const apiKey = input.apiKey || process.env.XAI_API_KEY;
-  if (!apiKey) return localAiResult(input);
+  if (!apiKey) throw new Error(`${input.provider} API Key를 연결해주세요.`);
   const response = await fetch('https://api.x.ai/v1/responses', {
+    signal: AbortSignal.timeout(60_000),
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -154,13 +139,14 @@ async function generateWithGrok(input: GenerateThinkingInput): Promise<AiResult>
   }
   const data = (await response.json()) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
   const text = data.output_text ?? data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text ?? '';
-  return text ? parseOpenAiText(text, input) : localAiResult(input);
+  return parseOpenAiText(text, input);
 }
 
 async function generateWithCompatibleChat(input: GenerateThinkingInput, url: string, environmentKey: string | undefined, defaultModel: string): Promise<AiResult> {
   const apiKey = input.apiKey || environmentKey;
-  if (!apiKey) return localAiResult(input);
+  if (!apiKey) throw new Error(`${input.provider} API Key를 연결해주세요.`);
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(60_000),
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -177,12 +163,12 @@ async function generateWithCompatibleChat(input: GenerateThinkingInput, url: str
   }
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const text = data.choices?.[0]?.message?.content ?? '';
-  return text ? parseOpenAiText(text, input) : localAiResult(input);
+  return parseOpenAiText(text, input);
 }
 
 async function generateWithOpenCodeZen(input: GenerateThinkingInput): Promise<AiResult> {
   const apiKey = input.apiKey || process.env.OPENCODE_ZEN_API_KEY;
-  if (!apiKey) return localAiResult(input);
+  if (!apiKey) throw new Error(`${input.provider} API Key를 연결해주세요.`);
 
   const model = input.model || process.env.OPENCODE_ZEN_MODEL || 'x-preview-f-free';
   const prompt = [
@@ -192,6 +178,7 @@ async function generateWithOpenCodeZen(input: GenerateThinkingInput): Promise<Ai
   ].join('\n\n');
   const usesResponses = /^(gpt-|grok-|muse-spark)/.test(model);
   const response = await fetch(usesResponses ? 'https://opencode.ai/zen/v1/responses' : 'https://opencode.ai/zen/v1/chat/completions', {
+    signal: AbortSignal.timeout(60_000),
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(usesResponses
@@ -209,14 +196,15 @@ async function generateWithOpenCodeZen(input: GenerateThinkingInput): Promise<Ai
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
   const text = data.output_text ?? data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text ?? data.choices?.[0]?.message?.content ?? '';
-  return text ? parseOpenAiText(text, input) : localAiResult(input);
+  return parseOpenAiText(text, input);
 }
 
 async function generateWithOpenAi(input: GenerateThinkingInput): Promise<AiResult> {
   const apiKey = input.apiKey || process.env.OPENAI_API_KEY;
-  if (!apiKey) return localAiResult(input);
+  if (!apiKey) throw new Error(`${input.provider} API Key를 연결해주세요.`);
 
   const response = await fetch('https://api.openai.com/v1/responses', {
+    signal: AbortSignal.timeout(60_000),
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -246,11 +234,8 @@ async function generateWithOpenAi(input: GenerateThinkingInput): Promise<AiResul
   });
 
   if (!response.ok) {
-    if (input.apiKey) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      throw new Error(payload?.error?.message ?? `OpenAI API 요청에 실패했습니다. (${response.status})`);
-    }
-    return localAiResult(input);
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(payload?.error?.message ?? `OpenAI API 요청에 실패했습니다. (${response.status})`);
   }
 
   const data = (await response.json()) as {
@@ -262,14 +247,15 @@ async function generateWithOpenAi(input: GenerateThinkingInput): Promise<AiResul
     data.output?.flatMap((item) => item.content ?? []).find((item) => item.text)?.text ??
     '';
 
-  return text ? parseOpenAiText(text, input) : localAiResult(input);
+  return parseOpenAiText(text, input);
 }
 
 async function generateWithClaude(input: GenerateThinkingInput): Promise<AiResult> {
   const apiKey = input.apiKey || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return localAiResult(input);
+  if (!apiKey) throw new Error(`${input.provider} API Key를 연결해주세요.`);
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
+    signal: AbortSignal.timeout(60_000),
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -293,26 +279,24 @@ async function generateWithClaude(input: GenerateThinkingInput): Promise<AiResul
   });
 
   if (!response.ok) {
-    if (input.apiKey) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      throw new Error(payload?.error?.message ?? `Claude API 요청에 실패했습니다. (${response.status})`);
-    }
-    return localAiResult(input);
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(payload?.error?.message ?? `Claude API 요청에 실패했습니다. (${response.status})`);
   }
 
   const data = (await response.json()) as { content?: Array<{ text?: string }> };
   const text = data.content?.find((item) => item.text)?.text ?? '';
-  return text ? parseOpenAiText(text, input) : localAiResult(input);
+  return parseOpenAiText(text, input);
 }
 
 async function generateWithGemini(input: GenerateThinkingInput): Promise<AiResult> {
   const apiKey = input.apiKey || process.env.GEMINI_API_KEY;
-  if (!apiKey) return localAiResult(input);
+  if (!apiKey) throw new Error(`${input.provider} API Key를 연결해주세요.`);
 
   const model = input.model || process.env.GEMINI_MODEL || 'gemini-3.7-flash';
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
+      signal: AbortSignal.timeout(60_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -337,19 +321,16 @@ async function generateWithGemini(input: GenerateThinkingInput): Promise<AiResul
   );
 
   if (!response.ok) {
-    if (input.apiKey) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      const message = payload?.error?.message ?? `Gemini API 요청에 실패했습니다. (${response.status})`;
-      throw new Error(message.includes('high demand')
-        ? 'Gemini 3.7 사용량이 일시적으로 많습니다. 잠시 후 다시 보내거나 Gemini 3.6 Flash를 선택해주세요.'
-        : message);
-    }
-    return localAiResult(input);
+    const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    const message = payload?.error?.message ?? `Gemini API 요청에 실패했습니다. (${response.status})`;
+    throw new Error(message.includes('high demand')
+      ? 'Gemini 3.7 사용량이 일시적으로 많습니다. 잠시 후 다시 보내거나 Gemini 3.6 Flash를 선택해주세요.'
+      : message);
   }
 
   const data = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
   const text = data.candidates?.[0]?.content?.parts?.find((item) => item.text)?.text ?? '';
-  return text ? parseOpenAiText(text, input) : localAiResult(input);
+  return parseOpenAiText(text, input);
 }

@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: oracle-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -27,6 +27,9 @@ jobs:
       - run: npm ci
       - run: npm run verify
 
+      - name: Stamp verified revision
+        run: printf '%s\n' "$GITHUB_SHA" > public/release.txt
+
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
@@ -37,44 +40,34 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/oracle ~/.ssh/known_hosts
 
-      - name: Upload source
+      - name: Upload staged release
         env:
           HOST: ${{ secrets.ORACLE_HOST }}
           USER: ${{ secrets.ORACLE_USER }}
         run: |
-          rsync -az --delete \
+          release="/home/opc/thingalong-releases/${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          rsync -az \
             --exclude='.git/' \
             --exclude='node_modules/' \
-            --exclude='data/' \
+            --exclude='/data' \
             --exclude='.env*' \
+            --exclude='.next/cache/' \
             --exclude='output/' \
             --exclude='tmp/' \
+            --rsync-path="mkdir -p '$release' && rsync" \
             -e 'ssh -i ~/.ssh/oracle' \
-            ./ "$USER@$HOST:/home/opc/thingalong/"
+            ./ "$USER@$HOST:$release/"
 
-      - name: Build and restart
+      - name: Activate and verify release
         env:
           HOST: ${{ secrets.ORACLE_HOST }}
           USER: ${{ secrets.ORACLE_USER }}
         run: |
-          ssh -i ~/.ssh/oracle "$USER@$HOST" <<'REMOTE'
-          set -euo pipefail
-          cd /home/opc/thingalong
-          npm ci --omit=dev
-          sudo systemctl stop thingalong || true
-          sudo install -m 0644 deploy/thingalong.service /etc/systemd/system/thingalong.service
-          sudo install -m 0644 deploy/thingalong.conf /etc/nginx/conf.d/thingalong.conf
-          sudo firewall-cmd --permanent --add-service=http
-          sudo firewall-cmd --permanent --add-service=https
-          sudo firewall-cmd --reload
-          sudo systemctl daemon-reload
-          sudo systemctl enable --now thingalong
-          sudo nginx -t
-          sudo systemctl reload nginx
-          for attempt in {1..30}; do
-            curl --fail --silent http://127.0.0.1:3000/ >/dev/null && exit 0
-            sleep 2
-          done
-          sudo journalctl -u thingalong -n 80 --no-pager
-          exit 1
-          REMOTE
+          release="/home/opc/thingalong-releases/${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh -i ~/.ssh/oracle "$USER@$HOST" \
+            "bash '$release/deploy/activate-release.sh' '$release' /home/opc/thingalong '$GITHUB_SHA'"
+
+      - name: Verify public revision
+        run: |
+          test "$(curl --fail --silent --show-error --max-time 15 https://thinkalong.ai.kr/release.txt)" = "$GITHUB_SHA"
+          curl --fail --silent --show-error --max-time 15 https://thinkalong.ai.kr/projects >/dev/null
