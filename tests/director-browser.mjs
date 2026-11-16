@@ -92,4 +92,19 @@ await browser('logout');
 evaluate(`(() => {document.querySelector('[aria-label="프로젝트 새로고침"]').click();return true})()`);
 await until(`!document.querySelector('#director-project-select')`, 'logout clears project data');
 assert.equal(evaluate(`!!document.querySelector('.tw-run-error-box')`), false);
+clickText('러너 연결 관리');
+await until(`!!document.querySelector('.tw-cloud-form input')`, 'connection form');
+for (const width of [1440, 390]) {
+  orca('viewport', '--width', String(width), '--height', '1000', ...page);
+  const colors = evaluate(`(() => ({background:getComputedStyle(document.querySelector('.tw-cloud-connect')).backgroundColor,
+    text:getComputedStyle(document.querySelector('.tw-cloud-form')).color,
+    button:getComputedStyle(document.querySelector('.tw-cloud-form .tw-primary')).backgroundColor,
+    buttonText:getComputedStyle(document.querySelector('.tw-cloud-form .tw-primary')).color,
+    noOverflow:document.documentElement.scrollWidth<=innerWidth}))()`);
+  const luminance = color => color.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
+  assert.ok(contrast(colors.background, colors.text) >= 4.5, 'Connection text must remain readable');
+  assert.ok(contrast(colors.button, colors.buttonText) >= 4.5, 'Login action must remain readable');
+  assert.equal(colors.noOverflow, true);
+}
 console.log(`Director browser checks passed: responsive roles/results, bounded polling, real HTTP enqueue/cancel/failure, permission and logout. Page ${browserPageId}`);
