@@ -18,6 +18,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "ui-prototype/**",
+    "thinkalong-studio/**",
     "browser-extension/**",
     "deploy/**",
     "tmp/**",

@@ -20,11 +20,7 @@ export function proxy(request: NextRequest) {
     return response;
   }
 
-  const url = request.nextUrl.clone();
-  url.pathname = '/start';
-  const response = NextResponse.redirect(url);
-  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  return response;
+  return NextResponse.next();
 }
 
 export function middleware(request: NextRequest) {

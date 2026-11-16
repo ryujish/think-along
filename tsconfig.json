@@ -46,6 +46,7 @@
   ],
   "exclude": [
     "node_modules",
-    "ui-prototype"
+    "ui-prototype",
+    "thinkalong-studio"
   ]
 }
