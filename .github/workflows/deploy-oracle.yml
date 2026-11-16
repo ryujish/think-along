@@ -65,9 +65,10 @@ jobs:
         run: |
           release="/home/opc/thingalong-releases/${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ssh -i ~/.ssh/oracle "$USER@$HOST" \
-            "bash '$release/deploy/activate-release.sh' '$release' /home/opc/thingalong '$GITHUB_SHA'"
+            "node -e 'require(\"node:sqlite\")' && sudo install -m 0644 '$release/deploy/thingalong.service' /etc/systemd/system/thingalong.service && sudo systemctl daemon-reload && bash '$release/deploy/activate-release.sh' '$release' /home/opc/thingalong '$GITHUB_SHA'"
 
       - name: Verify public revision
         run: |
           test "$(curl --fail --silent --show-error --max-time 15 https://thinkalong.ai.kr/release.txt)" = "$GITHUB_SHA"
           curl --fail --silent --show-error --max-time 15 https://thinkalong.ai.kr/projects >/dev/null
+          test "$(curl --silent --show-error --max-time 15 -o /tmp/director-remote-health.json -w '%{http_code}' -H 'Origin: https://thinkalong.ai.kr' -H 'Content-Type: application/json' --data '{"action":"me"}' https://thinkalong.ai.kr/api/remote)" = 401

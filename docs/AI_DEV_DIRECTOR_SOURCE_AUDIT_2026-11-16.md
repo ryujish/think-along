@@ -1,5 +1,7 @@
 # AI DEV DIRECTOR 소스 전수 감사 및 Think Along 아키텍처 비교 증거 보고서 (최종 정정본)
 
+> 최초 분석 당시 MVP 경계에 대한 감사 기록이다. 후속 사용자가 역할별 CLI 실행·UI 개선을 명시하여 CLI·worktree 제외 판단을 변경했다. 현재 범위는 [Director UI·CLI 보고서](DIRECTOR_CLI_UI_DEPLOYMENT_2026-11-16.md)를 따른다.
+
 - **문서 식별자**: `docs/AI_DEV_DIRECTOR_SOURCE_AUDIT_2026-11-16.md`
 - **감사 일자**: 2026-11-16
 - **감사관**: agy (독립 감사관, Orca Coordination Bridge: `term_ca41c5f1-0a95-4159-be97-f03331ea6cd2`)

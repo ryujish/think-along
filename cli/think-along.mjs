@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { projectStore, activeSession, newSession, selectModel, packetFor, runTurn } from './core.mjs';
 import { bridge, hermesCommand } from './hermes.mjs';
+import { directorCli } from './director.mjs';
 
 const store = projectStore();
 const help = `Think Along — AI가 바뀌어도 대화와 기억은 이어집니다.
@@ -22,6 +23,7 @@ const help = `Think Along — AI가 바뀌어도 대화와 기억은 이어집�
   think-along context "질문"           전송할 Context Packet 확인
   think-along export                   프로젝트 원본 JSON 출력
   think-along doctor                   설치·설정 진단 (모델 호출 없음)
+  think-along director help            HEAD·BUILDER·REVIEWER 실행 및 서버 연결
   think-along setup                    Hermes 공급자·모델 설정 화면
   think-along auth [인자...]           Hermes 공식 인증 관리
   think-along skills|tools|mcp [...]    Hermes 기능 관리
@@ -30,7 +32,7 @@ const help = `Think Along — AI가 바뀌어도 대화와 기억은 이어집�
 대화 중: /help /new /sessions /resume ID /model 공급자 모델
          /memory 내용 /skills 이름,... /exit
 모델명은 공급자가 제공하는 정확한 ID를 사용하세요.
-CLI 데이터는 로컬 프로젝트별 저장소에 보존됩니다. 웹 자동 동기화는 아직 없습니다.`;
+CLI 데이터는 로컬 프로젝트별 저장소에 보존됩니다. Director는 별도 페어링 후 서버 UI와 동기화합니다.`;
 
 const print = value => stdout.write((typeof value === 'string' ? value : JSON.stringify(value, null, 2)) + '\n');
 async function getDefault() {
@@ -108,6 +110,7 @@ async function readStdin() {
 }
 async function main(args) {
   const command = args.shift();
+  if (command === 'director') return directorCli(args);
   if (command === '--help' || command === '-h' || command === 'help') { print(help); return 0; }
   if (command === '--version') { print('think-along CLI 0.1.0'); return 0; }
   if (!command || command === 'chat') {

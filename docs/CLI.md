@@ -1,5 +1,34 @@
 # Think Along CLI
 
+## Director: HEAD·BUILDER·REVIEWER 개발 팀 (2026-11-16)
+
+이 기능은 아래 Hermes 대화 명령과 별개다. Node.js 22.18 이상, Git, 로그인된 Codex·Antigravity(agy)·Claude CLI, package.json의 `verify` 또는 `test` 스크립트가 필요하다. 설치 확인은 인증 성공을 의미하지 않는다.
+
+```sh
+# 이 개발 Work에서 설치한 뒤 개발할 프로젝트 폴더로 이동한다.
+npm run cli:install
+think-along director doctor
+think-along director run "합계 함수의 오류를 수정하고 기존 테스트를 통과시켜"
+
+# 서버 UI로 제어하려면 기기를 연결하고 계속 실행한다.
+think-along director pair --server https://thinkalong.ai.kr --allow-run --share-diff
+think-along director start
+```
+
+서버 `/projects`의 "러너 연결 관리"에서 계정을 만들거나 로그인하고 페어링 코드를 승인한다. 기존 대화의 이메일 인증과 별도의 비밀번호 계정이다. UI에서 프로젝트·역할·목표를 선택하면 로컬 러너가 실행하고 단계별 출력·실패·diff를 동기화한다. 기본은 HEAD Codex, BUILDER agy, REVIEWER Claude이며 세 역할에 서로 다른 CLI를 지정해야 한다.
+
+`--allow-run`은 원격 실행, `--share-diff`는 코드 증거 전송을 허용한다. 둘 다 있어야 Director 원격 작업을 시작한다. CLI OAuth·API Key는 서버로 복사하지 않는다. 사용자가 지시문이나 파일 본문에 넣은 비밀 문자열을 자동 제거한다고 보장하지 않는다.
+
+HEAD 계획 → BUILDER 파일 제안 → controller의 실제 npm 검증 → 독립 검수 → HEAD 판정이다. 실패를 성공으로 바꾸거나 다른 CLI로 자동 전환하지 않는다. 변경은 프로젝트별 Think Along 저장소의 `worktrees/<run-id>`에 남으며 원본에는 자동 반영하지 않는다. 로컬 run 명령의 JSON 결과에 worktree 경로가 표시된다.
+
+취소는 로컬 프로세스 중단 확인 후 반영한다. 비정상 종료 시 진행 중 기록을 `interrupted`로 남기고 전달받은 명령을 자동 재실행하지 않는다. `director-runner.lock`이 남으면 실제 실행기가 없는지 확인한 후 해당 잠금만 정리한다.
+
+첫 버전은 Node.js 프로젝트의 제한된 파일 수정부터 지원한다. 보호된 설정·의존성 manifest·lockfile·숨김 경로·symlink는 수정 제안에서 제외한다. Worktree는 OS sandbox가 아니며 기존 npm 스크립트는 사용자 권한으로 실행된다. 신뢰한 프로젝트에서 실행한다.
+
+[구현·실제 CLI 검증·배포 보고서](DIRECTOR_CLI_UI_DEPLOYMENT_2026-11-16.md)
+
+## 기존 Hermes 대화 CLI
+
 터미널에서 `think-along`을 실행한다. Orca의 일반 터미널에서도 동일한 명령을 사용한다.
 웹 서버나 Orca가 실행 중이지 않아도 CLI는 동작한다.
 

@@ -1,5 +1,7 @@
 # AI Dev Director 분석·Think Along 적용·배포 보고서
 
+> 이 문서는 최초 신뢰도 보강 배포의 기록이다. 후속 사용자 지시로 CLI 역할 분담과 UI 변경을 추가했다. 아래 표의 "CLI·worktree 제외" 판정은 당시 범위이며, 현재 구현·검증·배포는 [Director UI·CLI 보고서](DIRECTOR_CLI_UI_DEPLOYMENT_2026-11-16.md)를 기준으로 한다.
+
 - 작성일: 2026-11-16
 - 참조 소스: `/Users/choisunghoon/Documents/Aitime/ai-dev-director`
 - 구현 대상: `/Users/choisunghoon/Documents/Aitime/think-along_start`

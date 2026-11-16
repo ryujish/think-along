@@ -1,5 +1,25 @@
 # Think Along — Architecture Blueprint
 
+## 2026-11-16: Director 개발 실행 경로
+
+후속 사용자 지시로 기존 대화 API와 별도로 역할별 CLI 개발 흐름을 추가한다. 아래 P0 경계와 세션 소유권을 유지하면서 UI 기본 진입점을 `/projects` Director로 바꾼다. 기존 Studio는 `?view=studio`로 유지한다.
+
+```text
+Director UI → /api/remote (계정·소유권·Origin 검사)
+            → RemoteStore (SQLite, 기기 페어링·명령 ID·취소 요청)
+            ← 로컬 think-along director start (기기 토큰, polling)
+                → HEAD(Codex 기본): 파일 범위·인수 기준
+                → BUILDER(agy 기본): 전체 파일 텍스트 제안
+                → controller: 경로 검사·별도 Git worktree 반영·실제 npm verify/test
+                → REVIEWER(Claude 기본): diff·검증 결과 독립 검수
+                → HEAD: 최종 판정
+            ← 제한된 실행 증거·명시적으로 공유한 diff
+```
+
+`cli/director-core.mjs`가 프로세스 상한·취소·허용 파일·검증 게이트를, `cli/director.mjs`가 기존 projectStore의 Director 상태와 서버 전달을 담당한다. CLI는 읽기 전용/plan 모드로 제안을 반환하고 원본 저장소를 직접 수정하지 않는다. Worktree는 파일 격리이며 OS 보안 sandbox를 대신하지 않는다. 프로젝트의 기존 npm 검증 스크립트는 로컬 사용자 권한으로 실행되므로 신뢰한 프로젝트에서 사용한다.
+
+초기 지원은 Git 저장소와 package.json의 verify/test가 있는 Node.js 프로젝트다. 자동 원본 적용·자동 fallback·자격증명 서버 복사·별도 서비스·신규 패키지는 추가하지 않는다. 배포는 GitHub Actions만 사용한다.
+
 ## 1. 현재 코드와 목표 구조의 연결
 
 현재 저장소에서 `Thinking`은 대화 메타데이터, `ConversationMessage`는 메시지, `lib/server/ai.ts`는 provider 호출과 라우팅을 모두 담당한다. 첫 변경은 기능을 새로 복제하지 않고 이 흐름을 분리하는 것이다.

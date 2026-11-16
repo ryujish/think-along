@@ -2,6 +2,17 @@
 
 ## 제품 정의
 
+### 현재 개발 작업의 범위 확장 (2026-11-16)
+
+사용자의 후속 지시 "여러개의 CLI가 각각 head 이런식으로 분담", "UI도 개선하고 서버에 배포"를 현재 개발 작업의 기준으로 한다. 아래의 과거 MVP 제외 목록보다 이 지시가 우선한다.
+
+- `/projects` 기본 화면은 Multi-CLI Director다. HEAD·BUILDER·REVIEWER에 서로 다른 Codex·agy·Claude CLI를 배정하고 5단계 실행 증거를 보여준다. 기존 Studio는 `/projects?view=studio`에서 연다.
+- 실행은 사용자가 로그인한 로컬 Mac의 `think-along director start`가 맡고 서버는 인증·기기 페어링·작업 전달·증거 조회를 담당한다. 서버에 개인 CLI 인증을 복사하지 않는다.
+- HEAD 계획 → BUILDER 파일 제안 → 격리 Git worktree에서 실제 npm 검증 → 독립 REVIEWER → HEAD 최종 판정 순서다. 원본 자동 반영, 자동 재시도·fallback은 하지 않는다.
+- 역할이 달라도 동일한 `thinkalong_session_id`와 확정 문맥을 사용한다. 토큰은 별도 개인 파일에 저장하고 세션·Context·동기화 증거에 포함하지 않는다.
+- 기존 공식 API 대화 흐름은 유지한다. CLI 설치는 새 Director 개발 기능의 실행 조건이며 기존 대화 전체의 필수 조건으로 확대하지 않는다.
+- 상세 변경·검증·배포 증거: [Director UI·CLI 보고서](DIRECTOR_CLI_UI_DEPLOYMENT_2026-11-16.md).
+
 Think Along은 여러 AI Provider·계정·모델을 하나의 연속된 프로젝트 경험으로 연결하는 AI Continuity Layer다. 사용자가 GPT, Claude, Gemini, Local LLM 등으로 바꿔도 대화, 기억, 결정, 파일과 현재 작업 상태가 이어져야 한다.
 
 핵심 경험:
@@ -146,7 +157,7 @@ P0에서는 Provider·Connection·Model 타입, 공통 Generate 계약, Provider
 - Context Cache는 전달 권한·메시지·결정·요약을 포함한 패킷 전체 내용에서 파생한다.
 - 연결 누락·API 실패·빈 응답을 예시 답변이나 다른 모델로 바꾸어 성공 처리하지 않는다. 기존 선택형 협업도 참여자 실패를 숨기지 않는다.
 - 검증 완료 산출물을 GitHub Actions로 배포하고, 실제 배포 커밋·상태 검사·실패 시 복구 증거를 남긴다.
-- 독립 검수, 부정적 증거와 출처 구분은 채택하되 CLI 전용 실행·자동 fallback·다중 agent sandbox는 도입하지 않는다.
+- 독립 검수, 부정적 증거와 출처 구분을 채택한다. 후속 사용자 지시로 Director의 역할별 CLI 실행·격리 worktree를 추가하며 자동 fallback은 계속 제외한다.
 - 상세 분석과 적용·제외 판정: [AI Dev Director 적용 보고서](AI_DEV_DIRECTOR_ADOPTION_REPORT_2026-11-16.md).
 
 ## MVP에서 가져오지 않을 것

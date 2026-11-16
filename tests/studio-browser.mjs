@@ -8,7 +8,7 @@ function orca(...args) {
   return result.result;
 }
 
-const { browserPageId } = orca('tab', 'create', '--url', new URL('/projects', process.argv[2] || 'http://127.0.0.1:3180').href);
+const { browserPageId } = orca('tab', 'create', '--url', new URL('/projects?view=studio', process.argv[2] || 'http://127.0.0.1:3180').href);
 const page = ['--page', browserPageId];
 orca('wait', '--selector', '.perspective', ...page);
 for (const width of [1440, 900, 390]) {
