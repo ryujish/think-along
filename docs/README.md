@@ -14,6 +14,8 @@ Think Along의 제품·기술 결정을 계속 편집하는 기준 작업공간�
 8. [08_AI_Router](08_AI_Router.md)
 9. [09_MVP_로드맵](09_MVP_로드맵.md)
 
+- [AI Dev Director 분석·적용·배포 보고서](AI_DEV_DIRECTOR_ADOPTION_REPORT_2026-11-16.md)
+
 ## 운영 원칙
 
 - 이 폴더의 문서를 제품 결정의 기준으로 사용한다.

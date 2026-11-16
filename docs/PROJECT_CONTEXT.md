@@ -140,6 +140,15 @@ P0에서는 Provider·Connection·Model 타입, 공통 Generate 계약, Provider
 
 참고: [OmniRoute 공식 저장소](https://github.com/diegosouzapw/OmniRoute)
 
+## AI Dev Director에서 흡수한 실행 신뢰도 원칙 (2026-11-16)
+
+- JSON 기억 저장은 원자적으로 교체하고 단일 프로세스 내 갱신을 직렬화한다. 손상·권한 오류를 초기 데이터로 덮어쓰지 않는다.
+- Context Cache는 전달 권한·메시지·결정·요약을 포함한 패킷 전체 내용에서 파생한다.
+- 연결 누락·API 실패·빈 응답을 예시 답변이나 다른 모델로 바꾸어 성공 처리하지 않는다. 기존 선택형 협업도 참여자 실패를 숨기지 않는다.
+- 검증 완료 산출물을 GitHub Actions로 배포하고, 실제 배포 커밋·상태 검사·실패 시 복구 증거를 남긴다.
+- 독립 검수, 부정적 증거와 출처 구분은 채택하되 CLI 전용 실행·자동 fallback·다중 agent sandbox는 도입하지 않는다.
+- 상세 분석과 적용·제외 판정: [AI Dev Director 적용 보고서](AI_DEV_DIRECTOR_ADOPTION_REPORT_2026-11-16.md).
+
 ## MVP에서 가져오지 않을 것
 
 - Gateway 복잡성
