@@ -5,6 +5,7 @@
 - 구현 대상: `/Users/choisunghoon/Documents/Aitime/think-along_start`
 - 운영 주소: https://thinkalong.ai.kr/projects
 - 작업 브랜치: `codex/ai-dev-director-adoption-2026-11-16`
+- 최신 운영 배포: `f6951a623e299058df5865f96411841166f3941a` — 2026-11-16 13:26 KST 재검증·재배포 완료 (8절).
 - 결과: **구현·독립 검수·GitHub Actions 배포·운영 상태 검사 완료**. 최종 증거는 마지막 절에 기록한다.
 
 ## 1. 결론과 적용 기준
@@ -122,12 +123,12 @@ AI Dev Director는 여러 CLI를 HEAD·BUILDER·REVIEWER로 조직하는 개발 
 
 실제 유료 Provider 호출, 원본의 전체 pytest, 다중 Node 프로세스 경쟁, 전원 손실/파일시스템 장애, 데이터 백업 복원 훈련은 이번에 검증하지 않았다. Provider JSON 필드의 완전한 런타임 스키마 검증도 별도 과제다. 서버 릴리스 교체는 짧은 재시작 구간을 포함하며 무중단 배포를 주장하지 않는다.
 
-## 7. 배포 최종 증거
+## 7. 최초 배포 증거 (2026-11-16 11:40 KST)
 
 ### 배포 결과
 
 - **Actions 결과**: `success` — [Deploy to Oracle 실행 #43793365133](https://github.com/ryujish/think-along/actions/runs/43793365133).
-- **운영 배포 SHA**: `ffd0ac73d9a62c8625a4af5406481a292f551223` ([변경 커밋](https://github.com/ryujish/think-along/commit/ffd0ac73d9a62c8625a4af5406481a292f551223)).
+- **최초 배포 SHA**: `ffd0ac73d9a62c8625a4af5406481a292f551223` ([변경 커밋](https://github.com/ryujish/think-along/commit/ffd0ac73d9a62c8625a4af5406481a292f551223)).
 - **실행 시간**: 2026-11-16 11:38:05~11:40:58 KST (02:38:05~02:40:58 UTC).
 - **CI 환경**: Ubuntu, Node.js `v22.23.4`. `npm ci`, lint, typecheck, 테스트, Next.js production build, 릴리스 업로드, 서버 활성화, 공개 revision 검사가 모두 성공했다.
 - **CI 테스트**: `tests 33`, `pass 32`, `fail 0`, `skipped 1`. 제외 항목은 기존 원격 연결 opt-in E2E다.
@@ -160,3 +161,18 @@ AI Dev Director는 여러 CLI를 HEAD·BUILDER·REVIEWER로 조직하는 개발 
 - agy 독립 전체 검증: `/tmp/thinkalong-agy-final-review.log` (exit 0).
 - GitHub Actions 로그 로컬 보관: `/tmp/thinkalong-deployment-43793365133.log`.
 - `/tmp` 로그는 영구 보존을 보장하지 않는다. 지속적인 배포 증거는 위 Actions URL과 커밋, 이 보고서의 결과 요약이다.
+
+## 8. 재검증·최신 커밋 재배포 (2026-11-16 13:26 KST)
+
+사용자의 추가 검증·배포 요청에 따라 소스를 수정하지 않고 현재 커밋을 재검증·재배포했다. 최초 배포본과의 차이는 이 보고서를 포함한 문서 6개이며, 기존 로컬 참조 디렉터리 `thinkalong-studio/`는 수정하거나 배포에 포함하지 않았다.
+
+- **배포 SHA**: `f6951a623e299058df5865f96411841166f3941a`.
+- **Actions**: [Deploy to Oracle 실행 #43803903789](https://github.com/ryujish/think-along/actions/runs/43803903789), 결과 `success`.
+- **실행 시간**: 2026-11-16 13:24:23~13:26:23 KST (04:24:23~04:26:23 UTC).
+- **전체 검증**: 로컬 `npm run verify` exit 0. lint·typecheck·production build 성공, 테스트 33개 중 32개 통과·실패 0개·기존 opt-in E2E 1개 제외. GitHub Actions에서도 동일한 전체 검증을 통과했다.
+- **독립 검수**: agy가 저장소를 수정하지 않고 두 커밋의 코드 동일성 및 배포 스크립트를 검수했다. Provider·JSON 저장소·Context Cache·협업·배포 회귀 테스트 5개를 직접 실행해 전부 통과(exit 0)했다. Orca Run `run_46d143d7f886`, Task `task_be183ea6e1f1`.
+- **데이터 보존**: 서버 로그에 `Activated f6951a623e299058df5865f96411841166f3941a; database preserved`가 기록됐다. 기존 환경·canonical data 경로와 교체 전후 DB checksum 검사 유지.
+- **운영 확인**: `/release.txt` HTTP 200과 배포 SHA 정확히 일치. `/projects`, `/legacy`, `/projects?source=cloud`, Provider 정적 이미지 HTTP 200. 인증 없는 `/api/ai/providers`, `/api/thinkings`는 HTTP 401로 접근 통제 유지.
+- **브라우저 확인**: 운영 주소의 1440·900·390px 자동 회귀 검사 통과, 해당 새 탭의 콘솔 조회 결과 빈 목록. Paseo Shared Browser 조작 도구가 세션에 없어 프로젝트 지침의 Orca 인앱 브라우저를 사용했다.
+- **증거 로그**: `/tmp/thinkalong-reverify-20261116.log`, `/tmp/thinkalong-agy-redeploy-20261116.log`, `/tmp/thinkalong-redeployment-43803903789.log`. 영구 결과 요약은 이 절과 Actions 링크에 남긴다.
+- **범위와 한계**: 실제 유료 API 호출과 기존 opt-in 원격 E2E는 실행하지 않았다. JSON 쓰기 직렬화는 단일 서버 프로세스 범위다. main 병합은 수행하지 않았으며, 이 재배포 결과 기록은 배포 후 별도 문서 커밋으로 남긴다.
