@@ -5,7 +5,8 @@
 - 참조: `/Users/choisunghoon/Documents/Aitime/ai-dev-director` (읽기 전용)
 - 작업 브랜치: `codex/director-cli-workspace-2026-11-16`
 - 운영 URL: https://thinkalong.ai.kr/projects
-- 현재 기록: 구현·로컬 전체 검증 완료. 배포 결과는 실제 Actions 완료 후 아래에 추가한다.
+- 결과: UI·CLI 역할 분담 구현, 로컬/CI 검증, GitHub Actions 배포와 운영 점검 완료. 실제 3개 CLI 전체 완주는 Claude OAuth 갱신 후 재검증이 필요하다.
+- 최종 운영 커밋: `61b29c2e58c2cdafcaa044b1989d6f75fcc545b9`
 
 ## 요청과 결과
 
@@ -54,17 +55,21 @@ CLI는 read-only/plan 모드와 파일 텍스트 제안 계약을 사용한다. 
 | UI | Orca 인앱 브라우저에서 1440·900·390px 역할/결과 가로 넘침 없음, 실제 로컬 HTTP signup·pair·enqueue·cancel·실패 표시·이력 잠금·역할 변경·권한·로그아웃 통과. 추론 증거는 명시적 fixture |
 | 기존 Studio | `tests/studio-browser.mjs http://127.0.0.1:3185`: 세 화면 크기에서 본문·근거 버튼·내비게이션·가로 넘침 통과 |
 | 전체 검증 | `npm run verify`: lint·typecheck·test·production build 성공. 44개 중 43개 pass·fail 0·기존 선택 실행 테스트 skip 1 |
-| 배포 | GitHub Actions 실행 전. 완료 후 아래에 결과 추가 |
+| 배포 | 최종 [Actions 43832183179](https://github.com/ryujish/think-along/actions/runs/43832183179) 성공, 공개 revision 일치, 새 Director와 기존 화면 200, 원격 기능의 비로그인 요청 401 |
 
 통합 테스트 중 실패 명령의 `error` 속성을 HTTP RPC 오류로 오인해 결과 조회가 409가 되는 문제를 재현했다. `remote-http.mjs`에서 숫자 status가 있는 RPC 오류와 정상 응답 안의 실행 실패를 구분했고, 실제 취소 결과 조회까지 통과했다. Node test runner의 `NODE_TEST_CONTEXT` 상속으로 하위 verifier가 실제 테스트를 건너뛰는 문제도 재현·차단하고 회귀 검사를 남겼다.
 
 브라우저에서 로그인 후 effect 의존성이 재생성되어 snapshot 갱신이 반복되는 문제를 재현·수정했다. 순차 polling·프로젝트 세대 번호·대기 명령의 실제 상태 확인·실패 시 실행 차단을 적용하고 요청 횟수 상한으로 회귀를 확인했다. CLI가 이미 수정된 파일을 바꿔도 Git 상태 문자만 같을 수 있으므로 호출 전후 실제 diff도 비교한다. verifier가 제안 코드를 바꾸면 동일 증거가 아니므로 중단한다.
 
-기존 Node 모듈 형식 경고와 빌드의 기존 파일 추적 경고는 기능 실패가 아니며 이번에 package 전체 module 설정을 바꾸지 않았다. Paseo Shared Browser 플러그인은 설치되어 있으나 이 세션에 브라우저 도구가 노출되지 않아, 사전 안내 후 프로젝트의 Orca 인앱 브라우저로 검증했다.
+연결 화면의 기존 Workspace 색상이 새 UI에 섞여 어두운 배경에 어두운 글자가 표시되는 문제도 화면 확인 중 발견했다. Director 안에서만 연결 폼 색상을 지정하고, 글자·로그인 버튼 대비와 모바일 넘침을 브라우저 회귀 검사로 남겼다. 이 보정을 `61b29c2`로 추가 배포했다.
+
+기존 Node 모듈 형식·localStorage 경고는 기능 실패가 아니며 이번에 package 전체 module 설정을 바꾸지 않았다. CI에는 Actions Node 런타임·runner 이미지 전환 안내가 남지만 모든 단계는 성공했다. Paseo Shared Browser 플러그인은 설치되어 있으나 이 세션에 브라우저 도구가 노출되지 않아, 사전 안내 후 프로젝트의 Orca 인앱 브라우저로 검증했다.
 
 ## 협업과 검수
 
 Orca Run `run_09f45e4fc055`에 설계·UI 구현·교차 수정 Task를 남겼다. agy는 Paseo 터미널에서 실행하고 Orca 셸을 협업 기록에만 사용했다. agy는 Director UI 파일, 주 작업자는 코어·서버·테스트·설정·문서를 소유했다. 완료 보고와 별도로 주 작업자가 diff·실제 CLI·HTTP·브라우저·전체 검증 결과를 확인한다.
+
+최종 독립 백엔드 검수 Task `task_1c4598319473` / Dispatch `ctx_5c916fb1dfbd`에서 agy가 코어·daemon·protocol·remote handler·테스트를 읽기 전용 검수하고 배포 차단 결함 없음으로 보고했다. UI 수정 Task `task_5e11139bfc6b` 종료 후 주 작업자가 지연된 이전 프로젝트의 명령 결과도 세대 번호로 다시 검사하도록 보강했다. 모든 Dispatch 완료 보고를 확인·ack하고 자원 결정을 기록했다.
 
 ## 한계와 다음 발전
 
@@ -76,4 +81,19 @@ Orca Run `run_09f45e4fc055`에 설계·UI 구현·교차 수정 Task를 남겼�
 
 ## 배포 결과
 
-GitHub Actions만 사용한다. 커밋 SHA·Actions URL·공개 revision·화면/remote 상태를 완료 후 기록한다.
+| 항목 | 관측 결과 |
+|---|---|
+| 첫 기능 배포 | `6dd7ffc3cd35e2e958346bc68b4029b415fe74af`, [Actions 43831538330](https://github.com/ryujish/think-along/actions/runs/43831538330) 성공 |
+| 최종 UI 보정 배포 | `61b29c2e58c2cdafcaa044b1989d6f75fcc545b9`, [Actions 43832183179](https://github.com/ryujish/think-along/actions/runs/43832183179) 성공, 2026-11-16 17:35 KST |
+| CI 검사 | npm ci, npm run verify(lint/typecheck/test/build) 모두 성공; 44개 중 pass 43·fail 0·기존 opt-in skip 1 |
+| 서버 활성화 | Node SQLite 사용 가능 확인, service의 원격 기능/정식 origin 활성화, 검증된 release 교체. 로그에 `database preserved` 확인 |
+| 공개 SHA | `https://thinkalong.ai.kr/release.txt`가 최종 운영 커밋과 정확히 일치 |
+| 공개 화면 | `/projects`, `/projects?view=studio`, `/projects?source=cloud` 모두 HTTP 200 |
+| 공개 인증 경계 | 올바른 Origin의 `POST /api/remote {action:me}`가 비로그인 상태에서 401. 이전의 기능 비활성 503이 아님 |
+| 운영 브라우저 | Orca에서 새 Director h1·3개 역할·미연결 실행 차단 확인, 1440/900/390px 가로 넘침 없음. 연결 폼의 밝은 배경·읽을 수 있는 텍스트/버튼 확인 |
+
+![운영 서버 Director 화면](audits/director-server-desktop-2026-11-16.png)
+
+GitHub Actions에서만 릴리스 업로드·서버 활성화·상태 확인을 수행했다. 로컬 SSH 배포나 서버 파일 직접 복사로 대체하지 않았다. 배포 뒤 보고서·화면 증거만 별도 커밋하며 운영 revision은 검증한 코드 커밋을 유지한다. 원본 `think-along`, 참조 `ai-dev-director`, 사용자 미추적 `thinkalong-studio/`는 수정하지 않았다.
+
+실행 위치에 대한 추가 응답이 없어 서버 UI + 로컬 Mac 러너를 기본으로 구현했다. 서버 실계정 가입·개인 기기 연결과 실제 세 CLI 전체 완주는 대신 수행했다고 주장하지 않는다. 로컬 CLI launcher는 설치하고 `think-along director help` 실행을 확인했다. 기기 연결·공식 Claude 로그인 갱신 후 운영 목표로 실행할 수 있다.
