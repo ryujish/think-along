@@ -34,9 +34,11 @@ for (const width of [1440, 900, 390]) {
   orca('viewport', '--width', String(width), '--height', '1000', ...page);
   const result = evaluate(`(() => ({width:innerWidth,noOverflow:document.documentElement.scrollWidth<=innerWidth,
     roles:document.querySelectorAll('.tw-role-card').length,unified:!!document.querySelector('.desktop-workspace'),
+    stacked:document.querySelector('.tw-embedded-header').getBoundingClientRect().bottom<=document.querySelector('.tw-director-main').getBoundingClientRect().top+1,
     disabled:document.querySelector('.tw-btn-primary').disabled,goalLabel:!!document.querySelector('label[for="director-goal-input"]')}))()`);
   assert.equal(result.width, width); assert.equal(result.noOverflow, true, `Overflow at ${width}`);
   assert.equal(result.roles, 3); assert.equal(result.unified, true); assert.equal(result.disabled, true); assert.equal(result.goalLabel, true);
+  assert.equal(result.stacked, true, `Development controls must sit above the work area at ${width}px`);
 }
 orca('viewport', '--width', '1440', '--height', '1100', ...page);
 await browser('signup', { email: `director-browser-${Date.now()}@example.test`, password: 'local-browser-fixture-password' });

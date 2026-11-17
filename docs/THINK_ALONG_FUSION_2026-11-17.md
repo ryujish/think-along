@@ -22,6 +22,8 @@
 | `node tests/studio-browser.mjs http://127.0.0.1:3187` | 기존 Studio의 세 화면 크기 회귀 검사 통과 |
 | 추가 변경한 브라우저 검사 스크립트 | ESLint·diff 검사 통과 |
 
+운영 스크린샷 검수에서 임베디드 제어 영역과 본문이 나란히 배치되는 문제를 발견했다. 임베디드 컨테이너의 flex 방향을 세로로 지정하고 세 화면 크기에서 제어 영역이 본문 위에 오는지 회귀 검사에 추가했다. 수정 후 전체 verify와 브라우저 동작 검사를 다시 통과했다.
+
 프로덕션 HTTP와 브라우저 fixture는 `/tmp/thinkalong-integrated-app.fxiqKo`의 별도 DB를 사용했다. 운영 사용자 데이터로 가입·실행·삭제 테스트를 하지 않았다. 주 작업자의 전체 검증 로그는 `/tmp/thinkalong-fusion-verify-20261117.log`다. 임시 로그의 영구 보존은 보장하지 않는다.
 
 ## 교차 검수와 한계
