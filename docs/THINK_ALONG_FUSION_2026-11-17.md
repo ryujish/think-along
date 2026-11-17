@@ -32,4 +32,16 @@ Orca Run `run_471ee13821e7`, Task `task_61df74313b14`, Dispatch `ctx_543c019c226
 
 실제 로컬 Claude CLI의 `auth status`는 `loggedIn: false`였다. 실계정 3개 CLI 전체 완주는 검증하지 못했다. 구현 검증은 실제 Git·npm·HTTP·daemon과 명시적 추론 fixture를 구분한다. 운영 실행은 로그인된 로컬 CLI 러너를 필요로 하며 개인 인증을 서버로 옮기거나 자동 fallback하지 않는다. 원본 자동 반영과 자동 배포 기능은 추가하지 않았다.
 
-원본 `think-along`, 참조 `ai-dev-director`, 사용자 미추적 `thinkalong-studio/`는 수정하지 않았다. 배포 결과는 GitHub Actions 완료 후 아래에 기록한다.
+원본 `think-along`, 참조 `ai-dev-director`, 사용자 미추적 `thinkalong-studio/`는 수정하지 않았다.
+
+## 최종 배포 증거
+
+- 운영 URL: https://thinkalong.ai.kr/projects. 개발 화면: https://thinkalong.ai.kr/projects?view=director.
+- 최종 코드 SHA: `45e4ea9ca834c7f07c5271d8748bf338679e7a4b`.
+- [GitHub Actions 43998453091](https://github.com/ryujish/think-along/actions/runs/43998453091): `success`. CI에서도 `npm ci`, 전체 verify, 릴리스 업로드·활성화·공개 revision 검사가 성공했다. 테스트 47개 중 46 pass, 0 fail, 기존 opt-in 1 skip.
+- `/release.txt`가 최종 SHA와 정확히 일치했다. `/projects`, `?view=director`, `?view=studio`, `?source=cloud`, `/legacy`는 모두 HTTP 200. 인증 없는 대화·Provider·remote 요청은 HTTP 401이다.
+- 최종 운영 화면에서 1440/900/390px 모두 기존 탐색 구조, 역할 3개, main 영역 1개, 제어 영역의 상단 배치와 가로 넘침 없음을 확인했다. 해당 탭의 콘솔 항목은 빈 목록이었다. 운영 기본 화면을 Orca 새 탭으로 열었다.
+- 배포는 기존 Actions 워크플로만 사용했다. 활성화 로그의 `database preserved`를 확인했다. 배포 로그: `/tmp/thinkalong-fusion-deployment-43998453091.log`.
+- 기능 브랜치 `codex/director-cli-workspace-2026-11-16`에서 명시적으로 배포했다. main 병합은 수행하지 않았다. 이후 main으로 배포할 때 이 변경을 포함해야 한다. 이 결과 기록과 스크린샷은 코드 배포 후 문서 커밋으로 별도 보존한다.
+
+![기존 Think Along 안의 AI 개발 화면](audits/thinkalong-fusion-production-2026-11-17.png)
