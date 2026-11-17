@@ -33,7 +33,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       root.classList.remove('dark');
     }
-    root.style.colorScheme = 'dark';
+    root.style.colorScheme = theme;
     try {
       window.localStorage.setItem(STORAGE_KEY, theme);
     } catch { /* noop */ }

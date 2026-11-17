@@ -30,6 +30,6 @@ for (const failedProvider of [primary.provider, collaborator.provider]) {
   }, instruction), /participant failed/);
   assert.equal(attempted.length, 2, 'an incomplete collaboration must not be synthesized as a full success');
 }
-const withKeys = await generateCollaborativeThinking({ prompt: '질문', context, primary: { ...primary, apiKey: 'private-primary' }, collaborator: { ...collaborator, apiKey: 'private-collaborator' } }, generate, instruction);
-assert.ok(withKeys.contributions.every((item) => !('apiKey' in item)), 'execution evidence must not carry credentials');
+const evidence = await generateCollaborativeThinking({ prompt: '질문', context, primary, collaborator }, generate, instruction);
+assert.ok(evidence.contributions.every((item) => Object.keys(item).sort().join(',') === 'answer,connectionId,model,provider'), 'execution evidence must not carry credentials');
 console.log('P4 collaboration loop passed');

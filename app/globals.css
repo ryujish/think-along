@@ -3,41 +3,44 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --bg-primary: #0b121c;
-  --bg-secondary: #111a2a;
-  --bg-tertiary: #18243a;
-  --bg-card: #172235;
-  --bg-card-hover: #1d2b43;
-  --bg-elevated: #223049;
+  color-scheme: light;
+  --bg-primary: #f3f5f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e9eef5;
+  --bg-card: #ffffff;
+  --bg-card-hover: #eef2f8;
+  --bg-elevated: #ffffff;
 
-  --text-primary: #f7f9fc;
-  --text-secondary: #a2acbc;
-  --text-tertiary: #737f92;
-  --text-inverse: #06130f;
+  --text-primary: #0f172a;
+  --text-secondary: #4b5b74;
+  --text-tertiary: #8b98ad;
+  --text-inverse: #ffffff;
 
-  --border-primary: #26354d;
-  --border-secondary: #33445f;
-  --border-emphasis: #435674;
+  --border-primary: #e0e6f0;
+  --border-secondary: #c9d3e3;
+  --border-emphasis: #9aa9c2;
 
-  --accent-green: #12b996;
-  --accent-green-soft: rgba(18, 185, 150, 0.14);
-  --accent-green-glow: rgba(18, 185, 150, 0.09);
-  --accent-warning: #f59e0b;
-  --accent-warning-soft: rgba(245, 158, 11, 0.14);
-  --accent-progress: #3b82f6;
-  --accent-progress-soft: rgba(59, 130, 246, 0.14);
-  --accent-purple: #a855f7;
-  --accent-purple-soft: rgba(168, 85, 247, 0.14);
-  --accent-danger: #ef4444;
-  --accent-danger-soft: rgba(239, 68, 68, 0.12);
+  --accent-green: #0ea47c;
+  --accent-green-hover: #0c8a68;
+  --accent-green-soft: rgba(14, 164, 124, 0.12);
+  --accent-green-glow: rgba(14, 164, 124, 0.12);
+  --accent-warning: #d97706;
+  --accent-warning-soft: rgba(217, 119, 6, 0.12);
+  --accent-progress: #2563eb;
+  --accent-progress-soft: rgba(37, 99, 235, 0.12);
+  --accent-purple: #9333ea;
+  --accent-purple-soft: rgba(147, 51, 234, 0.12);
+  --accent-danger: #dc2626;
+  --accent-danger-soft: rgba(220, 38, 38, 0.1);
 
-  --overlay-dark: rgba(2, 7, 13, 0.62);
-  --shadow-card: 0 12px 30px rgba(0, 0, 0, 0.2);
-  --shadow-elevated: 0 22px 60px rgba(0, 0, 0, 0.32);
-  --shadow-glow: rgba(18, 185, 150, 0.2);
+  --overlay-dark: rgba(15, 23, 42, 0.06);
+  --shadow-card: 0 12px 30px rgba(15, 23, 42, 0.08);
+  --shadow-elevated: 0 22px 60px rgba(15, 23, 42, 0.12);
+  --shadow-glow: rgba(14, 164, 124, 0.2);
 }
 
 .dark {
+  color-scheme: dark;
   --bg-primary: #080f17;
   --bg-secondary: #101827;
   --bg-tertiary: #162238;
@@ -52,8 +55,17 @@
   --border-secondary: #31415c;
   --border-emphasis: #455978;
   --accent-green: #10b998;
+  --accent-green-hover: #0d9e7f;
   --accent-green-soft: rgba(16, 185, 152, 0.14);
   --accent-green-glow: rgba(16, 185, 152, 0.08);
+  --accent-warning: #f59e0b;
+  --accent-warning-soft: rgba(245, 158, 11, 0.14);
+  --accent-progress: #3b82f6;
+  --accent-progress-soft: rgba(59, 130, 246, 0.14);
+  --accent-purple: #a855f7;
+  --accent-purple-soft: rgba(168, 85, 247, 0.14);
+  --accent-danger: #ef4444;
+  --accent-danger-soft: rgba(239, 68, 68, 0.12);
   --overlay-dark: rgba(2, 7, 13, 0.72);
   --shadow-card: 0 14px 34px rgba(0, 0, 0, 0.28);
   --shadow-elevated: 0 24px 68px rgba(0, 0, 0, 0.4);
@@ -72,7 +84,6 @@ body {
   color: var(--text-primary);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
-  color-scheme: dark;
 }
 
 button,

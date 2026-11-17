@@ -3,8 +3,9 @@ import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { projectStore } from './core.mjs';
-import { createDirectorRun, discoverClis, runDirector } from './director-core.mjs';
-import { DEFAULT_ROLES, publicDirector } from '../lib/director/protocol.mjs';
+import { createDirectorRun, discoverClis, invokeCli, runDirector } from './director-core.mjs';
+import { CLI_IDS, DEFAULT_ROLES, publicDirector } from '../lib/director/protocol.mjs';
+import { cliProvider, parseThinkingResult } from '../lib/server/cli-runtime.mjs';
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const print = value => process.stdout.write((typeof value === 'string' ? value : JSON.stringify(value, null, 2)) + '\n');
@@ -74,6 +75,15 @@ export function directorSnapshot(store, allowCode) {
   };
 }
 
+export async function executeThinkCommand(command, signal, invoke = invokeCli) {
+ const cli = command.params?.cli, prompt = command.params?.prompt;
+ if (!CLI_IDS.includes(cli) || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100000) {
+  throw new Error('대화 실행 요청 형식이 올바르지 않습니다.');
+ }
+ const value = await invoke(cli, prompt, os.tmpdir(), signal);
+ return parseThinkingResult(value, '', cliProvider[cli]);
+}
+
 export async function serveDirector(store, connection, { signal, invoke, execute } = {}) {
   const call = (action, body) => remoteCall(connection.server, action, body, connection.token);
   const localId = directorSnapshot(store, connection.allowCode).project.id;
@@ -106,9 +116,19 @@ export async function serveDirector(store, connection, { signal, invoke, execute
         if (!active) {
           const { command } = await call('device.poll');
           if (command) {
-            if (command.projectId !== localId || command.method !== 'director.run' || !connection.allowRun || !connection.allowCode) {
-              await call('device.result', { id: command.id, error: '허용되지 않은 역할 실행 요청입니다.' });
-            } else {
+            if (command.projectId !== localId || !connection.allowRun) {
+              await call('device.result', { id: command.id, error: '허용되지 않은 실행 요청입니다.' });
+            } else if (command.method === 'think.run') {
+              controller = new AbortController();
+              const promise = executeThinkCommand(command, controller.signal, invoke)
+                .then(
+                  async result => { await call('device.result', { id: command.id, result }); },
+                  async error => { await call('device.result', { id: command.id, error: error instanceof Error ? error.message : 'CLI 대화 실행에 실패했습니다.' }); },
+                )
+                .catch(error => { process.stderr.write(`대화 실행 기록 확인 필요: ${error.message}\n`); })
+                .finally(() => { active = undefined; });
+              active = { id: command.id, promise };
+            } else if (command.method === 'director.run' && connection.allowCode) {
               const run = createDirectorRun(command.params.request, command.params.roles, command.params.thinkalong_session_id || d.thinkalong_session_id); run.id = command.id;
               await persistDirectorRun(store, run);
               controller = new AbortController();
@@ -119,6 +139,8 @@ export async function serveDirector(store, connection, { signal, invoke, execute
                 .catch(error => { process.stderr.write(`역할 실행 기록 확인 필요: ${error.message}\n`); })
                 .finally(() => { active = undefined; });
               active = { id: command.id, promise };
+            } else {
+              await call('device.result', { id: command.id, error: '허용되지 않은 역할 실행 요청입니다.' });
             }
           }
         }

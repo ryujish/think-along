@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { generateThinking } from '@/lib/server/ai';
+import { generateThinkingWithRelay, relayStatusOf } from '@/lib/server/thinking-executor';
 import { getSkills } from '@/lib/server/capabilities';
 import { createContextPacket } from '@/lib/server/context-engine';
 import { updateDb, readDb } from '@/lib/server/db';
@@ -16,7 +16,7 @@ export async function POST(request: Request, context: RouteContext) {
   const auth = await requireUser(request);
   if (!auth.user) return auth.response;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => null)) as { prompt?: string; role?: InternalAgentRole; skillId?: SkillId; apiKey?: string } | null;
+  const body = (await request.json().catch(() => null)) as { prompt?: string; role?: InternalAgentRole; skillId?: SkillId } | null;
   const db = await readDb();
   const availableSkills = getSkills(db);
   const skill = body?.skillId ? availableSkills.find((item) => item.id === body.skillId && item.status === 'active' && (!item.userId || item.userId === auth.user.id)) : undefined;
@@ -34,7 +34,15 @@ export async function POST(request: Request, context: RouteContext) {
     agentInstruction += `\n\n[Applied Skill: ${skill.name}]\n` + skill.guidelines.map((g) => `- ${g}`).join('\n');
   }
   packet.system = `${packet.system}\n${agentInstruction}`;
-  const ai = await generateThinking({ prompt: body.prompt, provider: thinking.aiProvider, context: packet, apiKey: body.apiKey, model: thinking.selectedModel });
+  let ai;
+  try {
+    ai = await generateThinkingWithRelay(request, { prompt: body.prompt, provider: thinking.aiProvider, context: packet, model: thinking.selectedModel });
+  } catch (error) {
+    return NextResponse.json(
+      { error: { code: 'AI_CONNECTION_FAILED', message: error instanceof Error ? error.message : 'AI 연결에 실패했습니다.' } },
+      { status: relayStatusOf(error) },
+    );
+  }
   const now = new Date().toISOString();
   const run = await updateDb((mutableDb) => {
     const item = { id: randomUUID(), userId: auth.user.id, thinkalongSessionId: thinking.thinkalongSessionId, role, skillId: skill?.id, contextVersion: packet.version, status: 'completed' as const, output: ai.answer, createdAt: now };

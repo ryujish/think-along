@@ -18,7 +18,7 @@ export type ProviderConnection = {
   userId?: string;
   provider: ProviderId;
   name: string;
-  authKind: 'api_key' | 'oauth' | 'local';
+  authKind: 'api_key' | 'oauth' | 'local' | 'cli';
   credentialRef: string;
   status: ConnectionStatus;
   models: ModelCapability[];

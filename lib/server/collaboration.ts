@@ -5,10 +5,9 @@ export type CollaborationModel = {
   provider: AiProvider;
   connectionId: string;
   model: string;
-  apiKey?: string;
 };
 
-export type CollaborationContribution = Omit<CollaborationModel, 'apiKey'> & {
+export type CollaborationContribution = CollaborationModel & {
   answer: string;
 };
 

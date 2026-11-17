@@ -1575,3 +1575,72 @@
     font-size: 11px;
   }
 }
+
+/* Dark theme: follow the app-wide palette (light values above stay untouched). */
+.dark {
+  --tw-director-bg: var(--bg-primary);
+  --tw-director-card-bg: var(--bg-secondary);
+  --tw-director-text-primary: var(--text-primary);
+  --tw-director-text-secondary: var(--text-secondary);
+  --tw-director-border: var(--border-primary);
+  --tw-director-border-light: var(--border-primary);
+  --tw-director-teal: #2dd4bf;
+  --tw-director-teal-hover: #5eead4;
+  --tw-director-teal-light: rgba(45, 212, 191, 0.12);
+  --tw-director-teal-border: rgba(45, 212, 191, 0.35);
+  --tw-director-orange: #fb923c;
+  --tw-director-orange-hover: #fdba74;
+  --tw-director-orange-light: rgba(251, 146, 60, 0.12);
+  --tw-director-danger: #f87171;
+  --tw-director-danger-bg: rgba(248, 113, 113, 0.1);
+  --tw-director-danger-border: rgba(248, 113, 113, 0.35);
+  --tw-director-success: #4ade80;
+  --tw-director-success-bg: rgba(74, 222, 128, 0.1);
+  --tw-director-success-border: rgba(74, 222, 128, 0.35);
+}
+
+.dark .tw-embedded-return-btn:hover { background: var(--tw-director-teal-border); }
+.dark .tw-canonical-context-banner { background: var(--tw-director-teal-light); border-color: var(--tw-director-teal-border); color: var(--tw-director-teal); }
+.dark .tw-embedded-tabs { background: var(--bg-tertiary); }
+.dark .tw-embedded-tab { color: var(--text-secondary); }
+.dark .tw-embedded-tab.tw-tab-active { background: var(--bg-elevated); color: var(--tw-director-teal); }
+.dark .tw-canonical-context-notice { background: var(--tw-director-teal-light); border-color: var(--tw-director-teal-border); color: var(--tw-director-teal); }
+.dark .tw-embedded-project-select { background: var(--bg-tertiary); color: var(--text-primary); }
+.dark .tw-director-root .tw-cloud-form input { background: var(--bg-tertiary); border-color: var(--border-secondary); }
+.dark .tw-director-root .tw-cloud-connect .tw-secondary { background: var(--bg-tertiary); border-color: var(--border-secondary); }
+.dark .tw-director-root .tw-cloud-connect small { color: var(--text-secondary); }
+.dark .tw-director-root .tw-cloud-connect .tw-alert { color: var(--tw-director-danger); }
+.dark .tw-role-card { background-color: var(--bg-tertiary); }
+.dark .tw-role-card:hover { border-color: var(--border-secondary); }
+.dark .tw-role-icon-box { background-color: var(--bg-elevated); }
+.dark .tw-select { background-color: var(--bg-tertiary); }
+.dark .tw-pill-unknown { background-color: var(--bg-elevated); color: var(--text-secondary); border-color: var(--border-secondary); }
+.dark .tw-badge-warning { border-color: rgba(251, 146, 60, 0.4); }
+.dark .tw-badge-neutral { background-color: var(--bg-elevated); color: var(--text-secondary); border-color: var(--border-secondary); }
+.dark .tw-badge-running { background-color: rgba(56, 189, 248, 0.12); color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); }
+.dark .tw-textarea { background-color: var(--bg-tertiary); }
+.dark .tw-gate-notice { border-color: rgba(251, 146, 60, 0.4); }
+.dark .tw-running-indicator { color: #38bdf8; }
+.dark .tw-btn-secondary { background-color: var(--bg-tertiary); }
+.dark .tw-btn-secondary:hover:not(:disabled) { background-color: var(--bg-elevated); }
+.dark .tw-error-pre { color: var(--tw-director-danger); }
+.dark .tw-step-card { background-color: var(--bg-tertiary); }
+.dark .tw-step-card:hover { background-color: var(--bg-elevated); border-color: var(--border-secondary); }
+.dark .tw-step-selected { background-color: var(--bg-elevated); }
+.dark .tw-step-current { border-color: #38bdf8; }
+.dark .tw-dot-running { background-color: #38bdf8; }
+.dark .tw-dot-pending { background-color: var(--border-secondary); }
+.dark .tw-diff-container { background-color: var(--bg-secondary); }
+.dark .tw-diff-header { background-color: var(--bg-tertiary); }
+.dark .tw-diff-content { background-color: var(--bg-primary); }
+.dark .tw-diff-pre { color: var(--text-primary); }
+.dark .tw-verdict-changes { border-color: rgba(251, 146, 60, 0.4); }
+.dark .tw-history-item { background-color: var(--bg-tertiary); }
+.dark .tw-history-item:hover { background-color: var(--bg-elevated); border-color: var(--border-secondary); }
+.dark .tw-history-selected { background-color: var(--bg-elevated); }
+.dark .tw-history-chevron { color: var(--text-tertiary); }
+.dark .tw-history-banner { background-color: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.35); color: #fbbf24; }
+.dark .tw-offline-card { background-color: var(--bg-secondary); border-color: var(--border-secondary); }
+.dark .tw-offline-huge-icon { color: var(--text-tertiary); }
+.dark .tw-cli-instructions-card { background-color: var(--bg-tertiary); }
+.dark .tw-empty-state-box { color: var(--text-tertiary); }

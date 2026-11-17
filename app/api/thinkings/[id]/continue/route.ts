@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { generateThinking, getAiProviderStatuses, resolveProviderSelection } from '@/lib/server/ai';
+import { resolveProviderSelection } from '@/lib/server/ai';
+import { generateThinkingWithRelay, relayStatusOf } from '@/lib/server/thinking-executor';
 import { generateCollaborativeThinking } from '@/lib/server/collaboration';
 import { createContextPacket } from '@/lib/server/context-engine';
 import { cacheContext } from '@/lib/server/context-cache';
@@ -26,13 +27,11 @@ export async function POST(request: Request, context: RouteContext) {
     aiProvider?: AiProvider;
     aiCredential?: {
       connectionId?: string;
-      apiKey?: string;
       model?: string;
     };
     collaborator?: {
       provider?: AiProvider;
       connectionId?: string;
-      apiKey?: string;
       model?: string;
     };
   } | null;
@@ -67,30 +66,18 @@ export async function POST(request: Request, context: RouteContext) {
   if (!thinking.contextPolicy.allowedProviders.includes(provider)) {
     return NextResponse.json({ error: { code: 'PROVIDER_NOT_ALLOWED', message: '이 세션에서 허용되지 않은 Provider입니다.' } }, { status: 403 });
   }
-  const selection = resolveProviderSelection(
-    provider,
-    body.aiCredential?.connectionId ?? thinking.selectedConnectionId,
-    body.aiCredential?.model ?? thinking.selectedModel,
-  );
-  const providerContext = cacheContext(contextPacket, provider, selection.connectionId, selection.model);
-  const collaboratorProvider = body.collaborator?.provider;
-  const collaborator = collaboratorProvider && validProviders.includes(collaboratorProvider) && collaboratorProvider !== provider
-    ? resolveProviderSelection(collaboratorProvider, body.collaborator?.connectionId, body.collaborator?.model)
-    : undefined;
-  if (collaborator && !thinking.contextPolicy.allowedProviders.includes(collaborator.provider)) {
-    return NextResponse.json({ error: { code: 'PROVIDER_NOT_ALLOWED', message: '보조 Provider가 이 세션에서 허용되지 않았습니다.' } }, { status: 403 });
-  }
-  if (collaborator && !body.collaborator?.apiKey && !getAiProviderStatuses().some((item) => item.provider === collaborator.provider && item.connected)) {
-    return NextResponse.json({ error: { code: 'COLLABORATOR_NOT_CONNECTED', message: '보조 AI 연결을 먼저 설정해주세요.' } }, { status: 400 });
-  }
-  let collaboration;
+  let selection: ReturnType<typeof resolveProviderSelection>;
+  let collaborator: ReturnType<typeof resolveProviderSelection> | undefined;
   try {
-    collaboration = await generateCollaborativeThinking({
-      prompt: body.prompt,
-      context: providerContext,
-      primary: { ...selection, apiKey: body.aiCredential?.apiKey },
-      collaborator: collaborator ? { ...collaborator, apiKey: body.collaborator?.apiKey } : undefined,
-    }, generateThinking, getInternalAgentInstruction);
+    selection = resolveProviderSelection(
+      provider,
+      body.aiCredential?.connectionId ?? thinking.selectedConnectionId,
+      body.aiCredential?.model ?? thinking.selectedModel,
+    );
+    const collaboratorProvider = body.collaborator?.provider;
+    collaborator = collaboratorProvider && validProviders.includes(collaboratorProvider) && collaboratorProvider !== provider
+      ? resolveProviderSelection(collaboratorProvider, body.collaborator?.connectionId, body.collaborator?.model)
+      : undefined;
   } catch (error) {
     return NextResponse.json(
       {
@@ -99,7 +86,30 @@ export async function POST(request: Request, context: RouteContext) {
           message: error instanceof Error ? error.message : 'AI 연결에 실패했습니다.',
         },
       },
-      { status: 502 },
+      { status: relayStatusOf(error) },
+    );
+  }
+  const providerContext = cacheContext(contextPacket, provider, selection.connectionId, selection.model);
+  if (collaborator && !thinking.contextPolicy.allowedProviders.includes(collaborator.provider)) {
+    return NextResponse.json({ error: { code: 'PROVIDER_NOT_ALLOWED', message: '보조 Provider가 이 세션에서 허용되지 않았습니다.' } }, { status: 403 });
+  }
+  let collaboration;
+  try {
+    collaboration = await generateCollaborativeThinking({
+      prompt: body.prompt,
+      context: providerContext,
+      primary: { ...selection },
+      collaborator: collaborator ? { ...collaborator } : undefined,
+    }, (input) => generateThinkingWithRelay(request, input), getInternalAgentInstruction);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'AI_CONNECTION_FAILED',
+          message: error instanceof Error ? error.message : 'AI 연결에 실패했습니다.',
+        },
+      },
+      { status: relayStatusOf(error) },
     );
   }
   const ai = collaboration.result;

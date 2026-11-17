@@ -1,2 +1,5 @@
-import { redirect } from 'next/navigation';
-export default function Home() { redirect('/projects'); }
+import ThinkAlong from '@/components/think/ThinkAlong';
+
+export default function Home() {
+  return <ThinkAlong initialScreen="dashboard" />;
+}

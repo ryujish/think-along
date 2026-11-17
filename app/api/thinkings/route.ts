@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { generateThinking, resolveProviderSelection } from '@/lib/server/ai';
+import { resolveProviderSelection } from '@/lib/server/ai';
+import { generateThinkingWithRelay, relayStatusOf } from '@/lib/server/thinking-executor';
 import { createContextPacket } from '@/lib/server/context-engine';
 import { requireUser } from '@/lib/server/auth';
 import { recordEvent } from '@/lib/server/events';
@@ -32,7 +33,6 @@ export async function POST(request: Request) {
     aiProvider?: AiProvider;
     aiCredential?: {
       connectionId?: string;
-      apiKey?: string;
       model?: string;
     };
     attachments?: Array<Pick<Attachment, 'type' | 'name' | 'url' | 'mimeType' | 'size'>>;
@@ -50,14 +50,14 @@ export async function POST(request: Request) {
     : auth.user.defaultAiProvider;
   const thinkingId = randomUUID();
   const contextPacket = createContextPacket({ thinkalongSessionId: thinkingId, messages: [], decisions: [], prompt: body.prompt });
-  const selection = resolveProviderSelection(aiProvider, body.aiCredential?.connectionId, body.aiCredential?.model);
   let ai;
+  let selection: ReturnType<typeof resolveProviderSelection>;
   try {
-    ai = await generateThinking({
+    selection = resolveProviderSelection(aiProvider, body.aiCredential?.connectionId, body.aiCredential?.model);
+    ai = await generateThinkingWithRelay(request, {
       prompt: body.prompt,
       provider: aiProvider,
       context: contextPacket,
-      apiKey: body.aiCredential?.apiKey,
       model: selection.model,
     });
   } catch (error) {
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
           message: error instanceof Error ? error.message : 'AI 연결에 실패했습니다.',
         },
       },
-      { status: 502 },
+      { status: relayStatusOf(error) },
     );
   }
   const now = new Date().toISOString();
