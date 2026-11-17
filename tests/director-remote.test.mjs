@@ -73,3 +73,20 @@ test('Director sync keeps only shaped execution evidence and fails closed on sta
     assert.throws(() => x.enqueue(), /반영/);
   } finally { x.store.close(); }
 });
+
+test('canonical execution results match their request and exclude private runner fields', () => {
+  const x = setup();
+  try {
+    const command = x.store.dispatch('enqueue', { projectId: x.projectId, id: 'canonical-result', method: 'director.run', revision: 0,
+      params: { request: 'goal', roles: DEFAULT_ROLES, thinkalong_session_id: 'canonical' }, canonical: { userId: 'owner', thinkingId: 'canonical' } }, x.auth);
+    x.store.dispatch('device.poll', {}, x.deviceAuth);
+    const run = createDirectorRun('goal', DEFAULT_ROLES, 'wrong-session'); run.id = command.id;
+    assert.throws(() => x.store.dispatch('device.result', { id: command.id, result: { run } }, x.deviceAuth), /대화 ID/);
+    assert.equal(x.store.dispatch('result', { projectId: x.projectId, id: command.id }, x.auth).state, 'delivered');
+    run.thinkalong_session_id = 'canonical'; run.apiKey = 'never-store'; run.worktree = '/private/worktree';
+    x.store.dispatch('device.result', { id: command.id, result: { run, token: 'never-store' }, error: 'fixture failure' }, x.deviceAuth);
+    const result = x.store.directorResult(command.id, x.device.token);
+    assert.equal(result.result.run.thinkalong_session_id, 'canonical');
+    assert.doesNotMatch(JSON.stringify(result.result), /never-store|private\/worktree/);
+  } finally { x.store.close(); }
+});

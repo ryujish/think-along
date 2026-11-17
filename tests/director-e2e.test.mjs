@@ -10,6 +10,8 @@ import { projectStore } from '../cli/core.mjs';
 import { directorState, directorSnapshot, persistDirectorRun, serveDirector, remoteCall } from '../cli/director.mjs';
 import { createDirectorRun } from '../cli/director-core.mjs';
 import { DEFAULT_ROLES } from '../lib/director/protocol.mjs';
+import { createContextPacket } from '../lib/server/context-engine.ts';
+import { directorSessionInput, recordDirectorRequest, recordDirectorResult } from '../lib/server/director-session.ts';
 
 test('HTTP pairing → real daemon → 3 role handoffs → real verifier → durable evidence, cancellation and restart without replay', { timeout: 60000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'director-http-')), project = path.join(root, 'repo');
@@ -20,9 +22,20 @@ test('HTTP pairing → real daemon → 3 role handoffs → real verifier → dur
   await writeFile(path.join(project, 'package.json'), JSON.stringify({ name: 'director-e2e-fixture', scripts: { verify: 'node --test add.test.mjs' } }));
   for (const args of [['init', '-q'], ['config', 'user.name', 'Fixture'], ['config', 'user.email', 'fixture@example.test'], ['add', '.'], ['commit', '-qm', 'fixture']]) execFileSync('git', ['-C', project, ...args], { stdio: 'pipe' });
   process.env.TALO_CLOUD_ENABLED = '1'; process.env.TALO_CLOUD_DB = path.join(root, 'cloud.sqlite');
+  const canonical = { thinkings: [{ id: 'conversation', thinkalongSessionId: 'canonical-http', userId: 'owner', status: 'active',
+    contextPolicy: { allowedProviders: ['GPT', 'Claude', 'Gemini'], includeDecisions: true, includeRecentMessages: true } }],
+    messages: [{ id: 'm1', thinkalongSessionId: 'canonical-http', role: 'user', content: 'Existing Think Along conversation', createdAt: '2026-01-01' }],
+    decisions: [{ id: 'd1', thinkalongSessionId: 'canonical-http', userId: 'owner', status: 'confirmed', statement: 'Canonical confirmed decision', createdAt: '2026-01-01' }] };
   const server = http.createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
-    const response = await handleRemoteRequest(new Request(`http://${req.headers.host}/api/remote`, { method: 'POST', headers: req.headers, body: Buffer.concat(chunks) }));
+    const response = await handleRemoteRequest(new Request(`http://${req.headers.host}/api/remote`, { method: 'POST', headers: req.headers, body: Buffer.concat(chunks) }), {
+      prepare: async body => {
+        const prepared = directorSessionInput(canonical, 'owner', 'conversation', body.id, body.params.request, body.params.roles);
+        return { canonical: prepared.canonical, params: { ...body.params, thinkalong_session_id: prepared.input.thinkalongSessionId, context: createContextPacket(prepared.input) } };
+      },
+      accepted: async command => recordDirectorRequest(canonical, command),
+      settled: async command => recordDirectorResult(canonical, command),
+    });
     res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(await response.text());
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -57,13 +70,19 @@ test('HTTP pairing → real daemon → 3 role handoffs → real verifier → dur
     assert.equal(projects[0].kind, 'director'); const projectId = projects[0].id;
     await browser('note', { projectId, revision: 0, content: 'Keep public API stable.' });
     await until(async () => (await browser('snapshot', { projectId })).cloud.synced);
-    const request = { projectId, id: 'http-director-run', method: 'director.run', params: { request: 'Fix addition', roles: DEFAULT_ROLES }, revision: 1 };
+    const request = { projectId, id: 'http-director-run', method: 'director.run', params: { request: 'Fix addition', roles: DEFAULT_ROLES, context: { system: 'forged client context' }, canonicalUserId: 'forged-owner' }, revision: 1 };
     await browser('enqueue', request); assert.equal((await browser('enqueue', request)).id, request.id);
     await assert.rejects(browser('enqueue', { ...request, params: { ...request.params, request: 'different' } }), /동일 요청/);
     await until(async () => (await browser('result', { projectId, id: request.id })).state === 'complete');
     const snapshot = await until(async () => { const value = await browser('snapshot', { projectId }); return value.director.activeRun?.status === 'completed' ? value : null; });
     assert.deepEqual(calls.map(c => c.cli), ['codex', 'agy', 'claude', 'codex']);
     assert.ok(calls.every(c => c.prompt.includes('Keep public API stable.') && c.prompt.includes(snapshot.director.activeRun.thinkalong_session_id)));
+    assert.equal(snapshot.director.activeRun.thinkalong_session_id, 'canonical-http');
+    assert.ok(calls.every(c => c.prompt.includes('Existing Think Along conversation') && c.prompt.includes('Canonical confirmed decision') && !c.prompt.includes('forged')));
+    const resultMessage = canonical.messages.find(m => m.id === 'director_http-director-run_result');
+    assert.equal(resultMessage.executionStatus, 'succeeded');
+    assert.match(resultMessage.content, /Approved isolated result/);
+    assert.equal(canonical.messages.filter(m => m.id === 'director_http-director-run_request').length, 1);
     assert.ok(snapshot.director.activeRun.steps.every(step => step.status === 'completed'));
     assert.match(snapshot.director.activeRun.diff, /a\+b/);
     assert.equal(snapshot.director.activeRun.worktree, undefined);

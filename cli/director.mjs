@@ -63,7 +63,8 @@ export function directorSnapshot(store, allowCode) {
   return {
     project: { id: createHash('sha256').update(store.project).digest('hex').slice(0, 24) + '_director', name: path.basename(store.project), branch: '', path: '' },
     revision: director.activeRun?.id || director.thinkalong_session_id, updated_at: Date.now() / 1000,
-    sessions: [{ id: director.thinkalong_session_id, title: path.basename(store.project), updated_at: Date.now() / 1000 }],
+    sessions: [...new Map([{ id: director.thinkalong_session_id, title: path.basename(store.project), updated_at: Date.now() / 1000 },
+      ...history.map(run => ({ id: run.thinkalong_session_id, title: run.goal.slice(0, 80), updated_at: Date.parse(run.finishedAt || run.createdAt) / 1000 }))].map(session => [session.id, session])).values()],
     runs: history.map(run => ({ id: run.id, session_id: run.thinkalong_session_id, state: run.status, mode: 'director', created_at: Date.parse(run.createdAt) / 1000, updated_at: Date.parse(run.finishedAt || run.createdAt) / 1000 })),
     messages: history.flatMap(run => run.steps.filter(step => step.output).map(step => ({ id: `${run.id}_${step.id}`, session_id: run.thinkalong_session_id, run_id: run.id, role: step.id, text: step.output.slice(0, 10000), created_at: Date.parse(step.finishedAt || step.startedAt) / 1000 }))),
     tasks: history.flatMap(run => run.steps.map(step => ({ id: `${run.id}_${step.id}`, title: step.id, status: step.status }))),
@@ -94,7 +95,7 @@ export async function serveDirector(store, connection, { signal, invoke, execute
     await sync();
     for (const pending of await call('device.pending')) {
       const run = store.read().director.history.find(item => item.id === pending.id);
-      await call('device.result', { id: pending.id, result: run ? { runId: run.id, status: run.status } : undefined, error: !run || run.status !== 'completed' ? run?.error || '이전 실행 결과를 확인할 수 없습니다. 자동 재실행하지 않았습니다.' : undefined });
+      await call('device.result', { id: pending.id, result: run ? { runId: run.id, status: run.status, run: publicDirector({ roles: run.roles, clis: [], history: [run] }, connection.allowCode).history[0] } : undefined, error: !run || run.status !== 'completed' ? run?.error || '이전 실행 결과를 확인할 수 없습니다. 자동 재실행하지 않았습니다.' : undefined });
     }
     while (!signal?.aborted) {
       try {
@@ -108,13 +109,13 @@ export async function serveDirector(store, connection, { signal, invoke, execute
             if (command.projectId !== localId || command.method !== 'director.run' || !connection.allowRun || !connection.allowCode) {
               await call('device.result', { id: command.id, error: '허용되지 않은 역할 실행 요청입니다.' });
             } else {
-              const run = createDirectorRun(command.params.request, command.params.roles, d.thinkalong_session_id); run.id = command.id;
+              const run = createDirectorRun(command.params.request, command.params.roles, command.params.thinkalong_session_id || d.thinkalong_session_id); run.id = command.id;
               await persistDirectorRun(store, run);
               controller = new AbortController();
               const promise = runDirector({ project: store.project, worktrees: path.join(path.dirname(store.file), 'worktrees'), run,
-                onUpdate: value => persistDirectorRun(store, value), signal: controller.signal, invoke, execute,
+                onUpdate: value => persistDirectorRun(store, value), signal: controller.signal, invoke, execute, context: command.params.context,
                 memories: [...store.read().memories, ...d.notes.filter(note => note.status === 'confirmed')] })
-                .then(async result => { await call('device.result', { id: command.id, result: { runId: result.id, status: result.status }, error: result.status === 'completed' ? undefined : result.error }); })
+                .then(async result => { await call('device.result', { id: command.id, result: { runId: result.id, status: result.status, run: publicDirector({ roles: result.roles, clis: [], history: [result] }, connection.allowCode).history[0] }, error: result.status === 'completed' ? undefined : result.error }); })
                 .catch(error => { process.stderr.write(`역할 실행 기록 확인 필요: ${error.message}\n`); })
                 .finally(() => { active = undefined; });
               active = { id: command.id, promise };

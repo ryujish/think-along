@@ -1,19 +1,13 @@
 import { NextResponse } from 'next/server';
-import { clearSessionCookie, getCookieValue, sessionCookieName } from '@/lib/server/auth';
-import { updateDb } from '@/lib/server/db';
-import { createHash } from 'node:crypto';
+import { clearSessionCookie, signOut } from '@/lib/server/auth';
+import { handleRemoteRequest } from '@/lib/server/remote-http.mjs';
 
 export async function POST(request: Request) {
-  const token = getCookieValue(request, sessionCookieName);
-
-  if (token) {
-    const tokenHash = createHash('sha256').update(token).digest('hex');
-    await updateDb((db) => {
-      db.sessions = db.sessions.filter((session) => session.tokenHash !== tokenHash);
-    });
-  }
+  await signOut(request);
 
   const response = NextResponse.json({ ok: true });
   response.headers.set('Set-Cookie', clearSessionCookie());
+  const remote = await handleRemoteRequest(new Request(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify({ action: 'logout' }) }));
+  for (const cookie of remote.headers.getSetCookie()) response.headers.append('Set-Cookie', cookie);
   return response;
 }

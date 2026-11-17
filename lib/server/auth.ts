@@ -26,6 +26,13 @@ export function getCookieValue(request: Request, name: string) {
     .join('=');
 }
 
+export async function signOut(request: Request) {
+  const token = getCookieValue(request, sessionCookieName);
+  if (!token) return;
+  const tokenHash = hashToken(token);
+  await updateDb(db => { db.sessions = db.sessions.filter(session => session.tokenHash !== tokenHash); });
+}
+
 export async function signInWithEmail(input: {
   email: string;
   nickname?: string;

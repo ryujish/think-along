@@ -17,6 +17,12 @@ test('HTTP boundary rejects wrong origins, legacy cookies, missing auth, oversiz
  const cookie=signup.headers.get('set-cookie');assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);assert.match(cookie,/SameSite=Strict/);
  assert.equal((await signup.json()).result.token,undefined);
  assert.equal((await handleRemoteRequest(req({action:'projects'},{cookie:cookie.split(';')[0]}))).status,200);
+ const login=await handleRemoteRequest(req({action:'login',email:'http@example.test',password:'a-strong-test-password'}),{signedIn:async account=>{assert.equal(account.email,'http@example.test');return 'think_along_session=canonical-token; HttpOnly; Path=/; SameSite=Lax; Secure';}});
+ assert.equal(login.headers.getSetCookie().length,2,'remote and canonical cookies must be distinct browser cookies');
+ assert.match(login.headers.getSetCookie()[1],/^think_along_session=/);
+ let prepared=false;
+ assert.equal((await handleRemoteRequest(req({action:'enqueue',method:'director.run',params:{request:'test'}},{cookie:'think_along_session=legacy-only'}),{prepare:async()=>{prepared=true;return {};}})).status,401);
+ assert.equal(prepared,false,'legacy email auth never authorizes remote execution');
  process.env.TALO_CLOUD_ENABLED='0';assert.equal((await handleRemoteRequest(req({action:'projects'}))).status,503);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

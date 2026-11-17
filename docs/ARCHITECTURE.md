@@ -1,5 +1,18 @@
 # Think Along — Architecture Blueprint
 
+## 2026-11-17: 기존 대화와 Director의 통합
+
+`/projects`의 기본 앱과 AI 개발 화면은 같은 Think Along 탐색 구조를 사용한다. `/api/remote`는 기존 비밀번호·기기·Origin 경계를 통과한 Director 요청에 대해 대화 소유권과 전달 권한을 추가로 검사한다. Context Engine의 패킷을 역할별 실행에 전달하고, 완료·실패 증거는 원래 JSON 대화 저장소에 중복 없이 기록한다. 원격 실행 큐와 기기 페어링의 SQLite는 그대로 유지한다.
+
+```text
+Think Along 대화 → AI 개발 화면 → /api/remote
+  → canonical 대화·권한 검사 → Context Packet → 기존 기기 큐
+  → 로컬 Director: HEAD → BUILDER → npm 검증 → REVIEWER → HEAD
+  → 제한된 실행 증거 → 원래 Think Along 대화 → Journey에서 다시 열기
+```
+
+새 개발 목표는 API 모델을 호출하지 않고 대화를 만든다. 이후 공식 API 대화와 동일한 세션을 이어간다. 기존 대화의 모델·계정 선택, 확정 결정과 이전 원문은 실행 결과로 덮어쓰지 않는다. 배포는 기존 GitHub Actions 경로를 사용한다.
+
 ## 2026-11-16: Director 개발 실행 경로
 
 후속 사용자 지시로 기존 대화 API와 별도로 역할별 CLI 개발 흐름을 추가한다. 아래 P0 경계와 세션 소유권을 유지하면서 UI 기본 진입점을 `/projects` Director로 바꾼다. 기존 Studio는 `?view=studio`로 유지한다.

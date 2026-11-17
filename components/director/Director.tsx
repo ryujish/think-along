@@ -15,6 +15,7 @@ import {
   History,
   Cpu,
   ChevronRight,
+  ChevronLeft,
   ExternalLink,
   Wifi,
   WifiOff,
@@ -63,7 +64,23 @@ const ROLE_INFO: Record<DirectorRole, { title: string; subtitle: string; icon: R
   reviewer: { title: 'REVIEWER (독립 검수)', subtitle: 'Diff 및 테스트 로그 검수', icon: <ShieldCheck className="tw-role-svg" /> },
 };
 
-export default function Director() {
+export interface DirectorProps {
+  embedded?: boolean;
+  sessionId?: string;
+  onAccountChange?: () => void;
+  onReturnToConversation?: () => void;
+  conversations?: { id: string; title: string }[];
+  onSelectSession?: (sessionId: string) => void;
+}
+
+export default function Director({
+  embedded = false,
+  sessionId,
+  onAccountChange,
+  onReturnToConversation,
+  conversations,
+  onSelectSession,
+}: DirectorProps = {}) {
   const [account, setAccount] = useState<{ email: string } | null>(null);
   const [projects, setProjects] = useState<DirectorProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -251,6 +268,9 @@ export default function Director() {
   const handleFullRefresh = useCallback(async () => {
     setError('');
     const acc = await refreshAccount();
+    if (onAccountChange) {
+      onAccountChange();
+    }
     if (acc) {
       await refreshProjects();
       const targetId = currentProjectRef.current || selectedProjectId;
@@ -258,7 +278,7 @@ export default function Director() {
         await refreshSnapshot(targetId);
       }
     }
-  }, [refreshAccount, refreshProjects, refreshSnapshot, selectedProjectId]);
+  }, [refreshAccount, refreshProjects, refreshSnapshot, selectedProjectId, onAccountChange]);
 
   // Initial load: runs ONCE on mount
   useEffect(() => {
@@ -390,19 +410,26 @@ export default function Director() {
     const runId = crypto.randomUUID();
     try {
       setPendingRunId(runId);
+      const runParams: Record<string, unknown> = {
+        request: goal.trim(),
+        roles,
+      };
+      if (sessionId) {
+        runParams.thinkalong_session_id = sessionId;
+      }
       await cloudCall<{ id: string }>('enqueue', {
         projectId: selectedProjectId,
         id: runId,
         method: 'director.run',
-        params: {
-          request: goal.trim(),
-          roles,
-        },
+        params: runParams,
         revision: snapshot.cloud.revision,
       });
       setNotice('작업 지시가 큐에 등록되었습니다. 로컬 러너 수신을 대기합니다.');
       setSelectedHistoryId(null);
       await refreshSnapshot();
+      if (onAccountChange) {
+        onAccountChange();
+      }
     } catch (err) {
       setPendingRunId(null);
       setError((err as Error).message || '작업 시작 요청 실패');
@@ -433,184 +460,317 @@ export default function Director() {
     setGoal('사용자 인증 및 세션 검증 로직에 타입 가드를 적용하고 npm run verify 통과 검증');
   };
 
+  const MainTag = embedded ? 'section' : 'main';
+
   return (
-    <div className="tw-director-root">
-      {/* Mobile Top Header */}
-      <header className="tw-director-mobile-header" aria-label="모바일 상단 내비게이션">
-        <div className="tw-director-brand">
-          <Terminal className="tw-brand-icon" />
-          <span className="tw-brand-title">Think Along Director</span>
-        </div>
-        <button
-          type="button"
-          className="tw-icon-button"
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          aria-label={isSidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
-        >
-          {isSidebarOpen ? <X /> : <Menu />}
-        </button>
-      </header>
+    <div className={`tw-director-root ${embedded ? 'tw-embedded' : ''}`}>
+      {/* Mobile Top Header - only in standalone mode */}
+      {!embedded && (
+        <header className="tw-director-mobile-header" aria-label="모바일 상단 내비게이션">
+          <div className="tw-director-brand">
+            <Terminal className="tw-brand-icon" />
+            <span className="tw-brand-title">Think Along Director</span>
+          </div>
+          <button
+            type="button"
+            className="tw-icon-button"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            aria-label={isSidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
+          >
+            {isSidebarOpen ? <X /> : <Menu />}
+          </button>
+        </header>
+      )}
 
       {/* Main Container */}
       <div className="tw-director-container">
-        {/* Charcoal Sidebar */}
-        <aside
-          className={`tw-director-sidebar ${isSidebarOpen ? 'tw-sidebar-open' : ''}`}
-          aria-label="디렉터 제어 사이드바"
-        >
-          <div className="tw-sidebar-header">
-            <div className="tw-director-brand">
-              <Terminal className="tw-brand-icon" />
-              <div>
-                <span className="tw-brand-title">Think Along</span>
-                <span className="tw-brand-subtitle">AI Dev Director</span>
+        {/* Charcoal Sidebar - only in standalone mode */}
+        {!embedded && (
+          <aside
+            className={`tw-director-sidebar ${isSidebarOpen ? 'tw-sidebar-open' : ''}`}
+            aria-label="디렉터 제어 사이드바"
+          >
+            <div className="tw-sidebar-header">
+              <div className="tw-director-brand">
+                <Terminal className="tw-brand-icon" />
+                <div>
+                  <span className="tw-brand-title">Think Along</span>
+                  <span className="tw-brand-subtitle">AI Dev Director</span>
+                </div>
               </div>
+              <span className="tw-badge tw-badge-director">Multi-CLI</span>
             </div>
-            <span className="tw-badge tw-badge-director">Multi-CLI</span>
-          </div>
 
-          {/* Project Selector */}
-          <div className="tw-sidebar-section">
-            <div className="tw-section-title-row">
-              <label htmlFor="director-project-select" className="tw-sidebar-label">
-                <Server className="tw-mini-icon" /> 디렉터 프로젝트
-              </label>
-              <button
-                type="button"
-                className="tw-mini-refresh-btn"
-                onClick={handleFullRefresh}
-                title="프로젝트 목록 새로고침"
-                aria-label="프로젝트 새로고침"
-              >
-                <RefreshCw className="tw-mini-refresh-icon" />
-              </button>
+            {/* Project Selector */}
+            <div className="tw-sidebar-section">
+              <div className="tw-section-title-row">
+                <label htmlFor="director-project-select" className="tw-sidebar-label">
+                  <Server className="tw-mini-icon" /> 디렉터 프로젝트
+                </label>
+                <button
+                  type="button"
+                  className="tw-mini-refresh-btn"
+                  onClick={handleFullRefresh}
+                  title="프로젝트 목록 새로고침"
+                  aria-label="프로젝트 새로고침"
+                >
+                  <RefreshCw className="tw-mini-refresh-icon" />
+                </button>
+              </div>
+              {projects.length > 0 ? (
+                <select
+                  id="director-project-select"
+                  className="tw-select tw-sidebar-select"
+                  value={selectedProjectId}
+                  onChange={e => handleProjectSelect(e.target.value)}
+                >
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.display_name} {p.device ? `(${p.device.name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="tw-sidebar-empty-box">
+                  <p>등록된 Director 프로젝트가 없습니다.</p>
+                  <small>로컬 터미널에서 페어링 명령을 실행하세요.</small>
+                </div>
+              )}
             </div>
-            {projects.length > 0 ? (
-              <select
-                id="director-project-select"
-                className="tw-select tw-sidebar-select"
-                value={selectedProjectId}
-                onChange={e => handleProjectSelect(e.target.value)}
-              >
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.display_name} {p.device ? `(${p.device.name})` : ''}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="tw-sidebar-empty-box">
-                <p>등록된 Director 프로젝트가 없습니다.</p>
-                <small>로컬 터미널에서 페어링 명령을 실행하세요.</small>
+
+            {/* Device & Sync Status */}
+            {snapshot && (
+              <div className="tw-sidebar-section tw-device-status-card">
+                <div className="tw-device-header">
+                  <div className="tw-device-name">
+                    {isDeviceOnline ? (
+                      <Wifi className="tw-status-icon tw-online" />
+                    ) : (
+                      <WifiOff className="tw-status-icon tw-offline" />
+                    )}
+                    <span>{snapshot.cloud?.device?.name || '로컬 기기'}</span>
+                  </div>
+                  <span
+                    className={`tw-badge ${
+                      isDeviceOnline ? 'tw-badge-success' : 'tw-badge-danger'
+                    }`}
+                  >
+                    {isDeviceOnline ? '온라인' : '오프라인'}
+                  </span>
+                </div>
+                <div className="tw-device-metrics">
+                  <div className="tw-metric-row">
+                    <span>동기화 상태</span>
+                    <strong>{isDeviceSynced ? '동기화 완료' : '미동기화'}</strong>
+                  </div>
+                  <div className="tw-metric-row">
+                    <span>실행 권한 (Run)</span>
+                    <strong>{isRunAllowed ? '허용됨' : '차단됨'}</strong>
+                  </div>
+                  <div className="tw-metric-row">
+                    <span>코드 공유 (Diff)</span>
+                    <strong>{isCodeAllowed ? '허용됨' : '차단됨'}</strong>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
 
-          {/* Device & Sync Status */}
-          {snapshot && (
-            <div className="tw-sidebar-section tw-device-status-card">
-              <div className="tw-device-header">
-                <div className="tw-device-name">
-                  {isDeviceOnline ? (
-                    <Wifi className="tw-status-icon tw-online" />
-                  ) : (
-                    <WifiOff className="tw-status-icon tw-offline" />
-                  )}
-                  <span>{snapshot.cloud?.device?.name || '로컬 기기'}</span>
-                </div>
-                <span
-                  className={`tw-badge ${
-                    isDeviceOnline ? 'tw-badge-success' : 'tw-badge-danger'
-                  }`}
+            {/* Navigation Tabs */}
+            <nav className="tw-sidebar-nav" aria-label="사이드바 메뉴">
+              <button
+                type="button"
+                className={`tw-nav-item ${sidebarTab === 'director' ? 'tw-nav-active' : ''}`}
+                onClick={() => {
+                  setSidebarTab('director');
+                  setSelectedHistoryId(null);
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <Cpu className="tw-nav-icon" />
+                <span>AI 팀 파이프라인</span>
+                {isRunning && <span className="tw-pulse-dot" />}
+              </button>
+              <button
+                type="button"
+                className={`tw-nav-item ${sidebarTab === 'history' ? 'tw-nav-active' : ''}`}
+                onClick={() => {
+                  setSidebarTab('history');
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <History className="tw-nav-icon" />
+                <span>실행 이력</span>
+                {snapshot?.director?.history && snapshot.director.history.length > 0 && (
+                  <span className="tw-count-pill">{snapshot.director.history.length}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                className={`tw-nav-item ${sidebarTab === 'connect' ? 'tw-nav-active' : ''}`}
+                onClick={() => {
+                  setSidebarTab('connect');
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <Server className="tw-nav-icon" />
+                <span>러너 연결 관리</span>
+              </button>
+            </nav>
+
+            {/* External Links Section */}
+            <div className="tw-sidebar-footer">
+              <span className="tw-footer-title">워크스페이스 이동</span>
+              <div className="tw-footer-links">
+                <a href="/projects?view=studio" className="tw-footer-link">
+                  <ExternalLink className="tw-mini-icon" /> AI Studio 대화
+                </a>
+                <a href="/projects?source=cloud" className="tw-footer-link">
+                  <ExternalLink className="tw-mini-icon" /> 기존 프로젝트 목록
+                </a>
+                <a href="/legacy" className="tw-footer-link">
+                  <ExternalLink className="tw-mini-icon" /> 레거시 아카이브
+                </a>
+              </div>
+            </div>
+          </aside>
+        )}
+
+        {/* Embedded Header & Navigation Bar - when embedded */}
+        {embedded && (
+          <div className="tw-embedded-header" role="region" aria-label="임베디드 디렉터 제어">
+            <div className="tw-embedded-topbar">
+              {onReturnToConversation && (
+                <button
+                  type="button"
+                  className="tw-embedded-return-btn"
+                  onClick={onReturnToConversation}
+                  title="선택된 대화로 돌아가기"
                 >
-                  {isDeviceOnline ? '온라인' : '오프라인'}
-                </span>
-              </div>
-              <div className="tw-device-metrics">
-                <div className="tw-metric-row">
-                  <span>동기화 상태</span>
-                  <strong>{isDeviceSynced ? '동기화 완료' : '미동기화'}</strong>
-                </div>
-                <div className="tw-metric-row">
-                  <span>실행 권한 (Run)</span>
-                  <strong>{isRunAllowed ? '허용됨' : '차단됨'}</strong>
-                </div>
-                <div className="tw-metric-row">
-                  <span>코드 공유 (Diff)</span>
-                  <strong>{isCodeAllowed ? '허용됨' : '차단됨'}</strong>
-                </div>
+                  <ChevronLeft className="tw-mini-icon" />
+                  <span>대화로 돌아가기</span>
+                </button>
+              )}
+
+              {/* Conversation Selector */}
+              <div className="tw-embedded-session-picker">
+                <Sparkles className="tw-mini-icon" style={{ color: 'var(--tw-director-teal)' }} />
+                <label htmlFor="embedded-session-select" className="tw-embedded-label">
+                  이어갈 대화:
+                </label>
+                <select
+                  id="embedded-session-select"
+                  className="tw-select tw-session-select"
+                  value={sessionId || ''}
+                  onChange={(e) => onSelectSession?.(e.target.value)}
+                >
+                  <option value="">(새 개발 대화 시작)</option>
+                  {conversations?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
 
-          {/* Navigation Tabs */}
-          <nav className="tw-sidebar-nav" aria-label="사이드바 메뉴">
-            <button
-              type="button"
-              className={`tw-nav-item ${sidebarTab === 'director' ? 'tw-nav-active' : ''}`}
-              onClick={() => {
-                setSidebarTab('director');
-                setSelectedHistoryId(null);
-                setIsSidebarOpen(false);
-              }}
-            >
-              <Cpu className="tw-nav-icon" />
-              <span>AI 팀 파이프라인</span>
-              {isRunning && <span className="tw-pulse-dot" />}
-            </button>
-            <button
-              type="button"
-              className={`tw-nav-item ${sidebarTab === 'history' ? 'tw-nav-active' : ''}`}
-              onClick={() => {
-                setSidebarTab('history');
-                setIsSidebarOpen(false);
-              }}
-            >
-              <History className="tw-nav-icon" />
-              <span>실행 이력</span>
-              {snapshot?.director?.history && snapshot.director.history.length > 0 && (
-                <span className="tw-count-pill">{snapshot.director.history.length}</span>
+            {/* Context notice if sessionId present */}
+            {sessionId && (
+              <div className="tw-canonical-context-banner">
+                <Info className="tw-mini-icon" />
+                <span>이 대화의 전달 설정에 따라 확정 결정과 최근 대화를 AI 팀과 공유합니다.</span>
+              </div>
+            )}
+
+            {/* Embedded Controls Bar: Project selector, Device Status, and Tabs */}
+            <div className="tw-embedded-controls-bar">
+              <div className="tw-embedded-project-wrap">
+                <label htmlFor="director-project-select" className="tw-embedded-label">
+                  <Server className="tw-mini-icon" /> 프로젝트:
+                </label>
+                {projects.length > 0 ? (
+                  <select
+                    id="director-project-select"
+                    className="tw-select tw-embedded-project-select"
+                    value={selectedProjectId}
+                    onChange={(e) => handleProjectSelect(e.target.value)}
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.display_name} {p.device ? `(${p.device.name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="tw-embedded-no-projects">디렉터 프로젝트 없음</span>
+                )}
+                <button
+                  type="button"
+                  className="tw-mini-refresh-btn"
+                  onClick={handleFullRefresh}
+                  title="프로젝트 목록 새로고침"
+                  aria-label="프로젝트 새로고침"
+                >
+                  <RefreshCw className="tw-mini-refresh-icon" />
+                </button>
+              </div>
+
+              {snapshot && (
+                <div className="tw-embedded-device-badge">
+                  {isDeviceOnline ? (
+                    <span className="tw-badge tw-badge-success">● 온라인</span>
+                  ) : (
+                    <span className="tw-badge tw-badge-danger">○ 오프라인</span>
+                  )}
+                </div>
               )}
-            </button>
-            <button
-              type="button"
-              className={`tw-nav-item ${sidebarTab === 'connect' ? 'tw-nav-active' : ''}`}
-              onClick={() => {
-                setSidebarTab('connect');
-                setIsSidebarOpen(false);
-              }}
-            >
-              <Server className="tw-nav-icon" />
-              <span>러너 연결 관리</span>
-            </button>
-          </nav>
 
-          {/* External Links Section */}
-          <div className="tw-sidebar-footer">
-            <span className="tw-footer-title">워크스페이스 이동</span>
-            <div className="tw-footer-links">
-              <a href="/projects?view=studio" className="tw-footer-link">
-                <ExternalLink className="tw-mini-icon" /> AI Studio 대화
-              </a>
-              <a href="/projects?source=cloud" className="tw-footer-link">
-                <ExternalLink className="tw-mini-icon" /> 기존 프로젝트 목록
-              </a>
-              <a href="/legacy" className="tw-footer-link">
-                <ExternalLink className="tw-mini-icon" /> 레거시 아카이브
-              </a>
+              {/* Navigation Tabs */}
+              <nav className="tw-embedded-tabs" aria-label="디렉터 기능 탭">
+                <button
+                  type="button"
+                  className={`tw-embedded-tab ${sidebarTab === 'director' ? 'tw-tab-active' : ''}`}
+                  onClick={() => {
+                    setSidebarTab('director');
+                    setSelectedHistoryId(null);
+                  }}
+                >
+                  <Cpu className="tw-mini-icon" />
+                  <span>AI 팀 파이프라인</span>
+                  {isRunning && <span className="tw-pulse-dot" />}
+                </button>
+                <button
+                  type="button"
+                  className={`tw-embedded-tab ${sidebarTab === 'history' ? 'tw-tab-active' : ''}`}
+                  onClick={() => setSidebarTab('history')}
+                >
+                  <History className="tw-mini-icon" />
+                  <span>실행 이력</span>
+                  {snapshot?.director?.history && snapshot.director.history.length > 0 && (
+                    <span className="tw-count-pill">{snapshot.director.history.length}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`tw-embedded-tab ${sidebarTab === 'connect' ? 'tw-tab-active' : ''}`}
+                  onClick={() => setSidebarTab('connect')}
+                >
+                  <Server className="tw-mini-icon" />
+                  <span>러너 연결 관리</span>
+                </button>
+              </nav>
             </div>
           </div>
-        </aside>
+        )}
 
         {/* Main Work Area */}
-        <main className="tw-director-main" role="main">
+        <MainTag className="tw-director-main" {...(!embedded ? { role: 'main' } : { 'aria-label': '디렉터 작업 영역' })}>
           {/* Header Hero Area */}
-          <div className="tw-director-hero">
-            <h1 className="tw-hero-title">Think Along Multi-CLI Director</h1>
-            <p className="tw-hero-desc">
-              사용자 목표를 분석하는 <strong>HEAD</strong>, 격리 Worktree에서 코드를 구현하는 <strong>BUILDER</strong>, 변경 사항과 테스트를 독립 검증하는 <strong>REVIEWER</strong>가 협력하는 5단계 확정형 파이프라인입니다.
-            </p>
-          </div>
+            <div className="tw-director-hero">
+              <h1 className="tw-hero-title">Think Along Multi-CLI Director</h1>
+              <p className="tw-hero-desc">
+                사용자 목표를 분석하는 <strong>HEAD</strong>, 격리 Worktree에서 코드를 구현하는 <strong>BUILDER</strong>, 변경 사항과 테스트를 독립 검증하는 <strong>REVIEWER</strong>가 협력하는 5단계 확정형 파이프라인입니다.
+              </p>
+            </div>
 
           {/* Error and Notice Banners */}
           {error && (
@@ -978,6 +1138,13 @@ export default function Director() {
                     />
                   </div>
 
+                  {sessionId && (
+                    <div className="tw-canonical-context-notice">
+                      <Sparkles className="tw-mini-icon text-teal-600" />
+                      <span>💡 이 대화의 전달 설정에 따라 확정 결정과 최근 대화를 AI 팀과 공유합니다.</span>
+                    </div>
+                  )}
+
                   {executionGateReason && (
                     <div className="tw-gate-notice" role="alert">
                       <AlertTriangle className="tw-mini-icon" />
@@ -1227,7 +1394,7 @@ export default function Director() {
               )}
             </>
           )}
-        </main>
+        </MainTag>
       </div>
     </div>
   );

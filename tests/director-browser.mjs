@@ -11,7 +11,7 @@ function orca(...args) {
   const value = JSON.parse(execFileSync('rtk', ['proxy', 'orca', ...args, '--json'], { encoding: 'utf8' }));
   assert.equal(value.ok, true, JSON.stringify(value.error)); return value.result;
 }
-const { browserPageId } = orca('tab', 'create', '--url', origin + '/projects');
+const { browserPageId } = orca('tab', 'create', '--url', origin + '/projects?view=director');
 const page = ['--page', browserPageId];
 const evaluate = expression => {
   const value = orca('eval', '--expression', expression, ...page).result;
@@ -27,14 +27,16 @@ const until = async (expression, description) => {
   throw new Error(`Browser timeout: ${description}`);
 };
 const clickText = text => evaluate(`(() => {const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim().startsWith(${JSON.stringify(text)}));if(!b)throw new Error('Missing button');b.click();return true})()`);
+evaluate(`(async () => {const r=await fetch('/api/auth/logout',{method:'POST'});if(!r.ok)throw new Error('Fixture logout failed');return true})()`);
+orca('reload', ...page);
 orca('wait', '--selector', '.tw-director-root', ...page);
 for (const width of [1440, 900, 390]) {
   orca('viewport', '--width', String(width), '--height', '1000', ...page);
   const result = evaluate(`(() => ({width:innerWidth,noOverflow:document.documentElement.scrollWidth<=innerWidth,
-    roles:document.querySelectorAll('.tw-role-card').length,h1:document.querySelectorAll('h1').length,
+    roles:document.querySelectorAll('.tw-role-card').length,unified:!!document.querySelector('.desktop-workspace'),
     disabled:document.querySelector('.tw-btn-primary').disabled,goalLabel:!!document.querySelector('label[for="director-goal-input"]')}))()`);
   assert.equal(result.width, width); assert.equal(result.noOverflow, true, `Overflow at ${width}`);
-  assert.equal(result.roles, 3); assert.equal(result.h1, 1); assert.equal(result.disabled, true); assert.equal(result.goalLabel, true);
+  assert.equal(result.roles, 3); assert.equal(result.unified, true); assert.equal(result.disabled, true); assert.equal(result.goalLabel, true);
 }
 orca('viewport', '--width', '1440', '--height', '1100', ...page);
 await browser('signup', { email: `director-browser-${Date.now()}@example.test`, password: 'local-browser-fixture-password' });
@@ -48,7 +50,7 @@ const sync = (allowCode = true) => remoteCall(origin, 'device.sync', { projectId
 const { projectId } = await sync();
 evaluate(`(() => {window.__remoteRequests=0;const previous=window.fetch;window.fetch=(...args)=>{if(String(args[0]).includes('/api/remote'))window.__remoteRequests++;return previous(...args)};document.querySelector('[aria-label="프로젝트 새로고침"]').click();return true})()`);
 await until(`!!document.querySelector('#director-project-select')`, 'paired project visible');
-await until(`document.body.textContent.includes('동기화 완료')`, 'snapshot loaded');
+await until(`document.body.textContent.includes('설치 확인 (로컬)')`, 'runner snapshot loaded');
 await new Promise(resolve => setTimeout(resolve, 2500));
 assert.ok(evaluate('window.__remoteRequests') <= 14, 'Authenticated UI must not create a refresh loop');
 evaluate(`(() => {const t=document.querySelector('#director-goal-input');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'Fix addition in browser fixture');t.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
@@ -57,7 +59,7 @@ evaluate(`(() => {document.querySelector('.tw-btn-primary').click();return true}
 const queued = await until(`(async () => {const r=await fetch('/api/remote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'commands',projectId:${JSON.stringify(projectId)}})});return (await r.json()).result.at(-1)||null})()`, 'queued command');
 assert.equal(queued.method, 'director.run');
 await remoteCall(origin, 'device.poll', {}, device.token);
-const run = createDirectorRun(queued.params.request, DEFAULT_ROLES); run.id = queued.id;
+const run = createDirectorRun(queued.params.request, DEFAULT_ROLES, queued.params.thinkalong_session_id); run.id = queued.id;
 run.stage = 'reviewer'; run.steps.forEach((step, i) => { step.status = i < 3 ? 'completed' : i === 3 ? 'running' : 'pending'; step.output = i < 3 ? 'Browser fixture evidence' : ''; });
 run.diff = 'diff --git a/add.mjs b/add.mjs\n-a-b\n+a+b'; run.files = ['add.mjs'];
 raw.director.activeRun = run; raw.director.history = [run]; await sync();
@@ -76,6 +78,11 @@ for (const width of [1440, 900, 390]) {
   assert.equal(evaluate('document.documentElement.scrollWidth<=innerWidth'), true, `Result overflow at ${width}`);
 }
 orca('viewport', '--width', '1440', '--height', '1100', ...page);
+assert.equal(evaluate(`document.querySelector('#embedded-session-select').value`), queued.params.thinkalong_session_id);
+clickText('대화로 돌아가기');
+await until(`!document.querySelector('.tw-director-root')&&document.body.textContent.includes('OAuth session expired')`, 'execution failure restored in original conversation');
+clickText('Director (AI 팀)');
+await until(`!!document.querySelector('.tw-run-error-box')`, 'same conversation returns to development work');
 clickText('실행 이력');
 await until(`!!document.querySelector('.tw-history-item')`, 'history list');
 evaluate(`(() => {document.querySelector('.tw-history-item').click();return true})()`);
