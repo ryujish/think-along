@@ -1183,16 +1183,16 @@ function HomeScreen({
         </div>
 
         {!canUseSelectedProvider && (
-          <section className="mt-5 rounded-lg p-4" style={{ border: '1px solid rgba(251,191,36,0.45)', backgroundColor: 'rgba(251,191,36,0.1)' }}>
+          <section className="mt-5 rounded-lg p-4" style={{ border: '1px solid color-mix(in srgb, var(--accent-warning) 45%, transparent)', backgroundColor: 'var(--accent-warning-soft)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[13px] font-black text-amber-300">{selectedProvider} CLI가 연결되지 않았습니다.</p>
-                <p className="mt-1 text-[12px] font-bold leading-5 text-amber-300/80">구독 CLI 로그인 또는 러너를 연결하고 시작하세요.</p>
+                <p className="text-[13px] font-black" style={{ color: 'var(--accent-warning)' }}>{selectedProvider} CLI가 연결되지 않았습니다.</p>
+                <p className="mt-1 text-[12px] font-bold leading-5" style={{ color: 'var(--text-secondary)' }}>구독 CLI 로그인 또는 러너를 연결하고 시작하세요.</p>
               </div>
               <button
                 onClick={() => onOpenAiSetup()}
-                className="h-9 shrink-0 rounded-lg px-3 text-[12px] font-black text-amber-300"
-                style={{ border: '1px solid rgba(251,191,36,0.5)', backgroundColor: 'rgba(251,191,36,0.1)' }}
+                className="h-9 shrink-0 rounded-lg px-3 text-[12px] font-black"
+                style={{ border: '1px solid var(--accent-warning)', color: 'var(--accent-warning)' }}
               >
                 연결하기
               </button>
@@ -1265,7 +1265,7 @@ function HomeScreen({
             <Send className="absolute right-5" size={22} />
           </button>
           {requestError && (
-            <p className="mt-3 rounded-lg px-3 py-2 text-[12px] font-bold leading-5 text-red-300" style={{ border: '1px solid rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.12)' }}>
+            <p className="mt-3 rounded-lg px-3 py-2 text-[12px] font-bold leading-5" style={{ border: '1px solid color-mix(in srgb, var(--accent-danger) 50%, transparent)', backgroundColor: 'var(--accent-danger-soft)', color: 'var(--accent-danger)' }}>
               {requestError}
             </p>
           )}
@@ -1289,7 +1289,7 @@ function HomeScreen({
             <div>
               <div className="flex items-center gap-2">
                 <h4 className="text-[14px] font-extrabold" style={{ color: 'var(--text-primary)' }}>AI 팀과 자율 개발</h4>
-                <span className="rounded bg-teal-500/20 px-1.5 py-0.5 text-[10px] font-black text-teal-400">Director</span>
+                <span className="rounded px-1.5 py-0.5 text-[10px] font-black" style={{ backgroundColor: 'var(--accent-green-soft)', color: 'var(--accent-green)' }}>Director</span>
               </div>
               <p className="mt-0.5 text-[12px] font-semibold leading-4" style={{ color: 'var(--text-secondary)' }}>
                 Codex, Claude, AGY 멀티 CLI 팀이 독립 워크트리에서 구현·검증합니다.
@@ -1551,7 +1551,7 @@ function DetailScreen({
                       void item.action();
                     }}
                     className="block h-11 w-full px-4 text-left text-[13px] font-bold"
-                    style={{ borderBottom: item.label === 'Delete' ? undefined : '1px solid var(--border-primary)', color: item.danger ? '#fb7185' : undefined }}
+                    style={{ borderBottom: item.label === 'Delete' ? undefined : '1px solid var(--border-primary)', color: item.danger ? 'var(--accent-danger)' : undefined }}
                   >
                     {item.label}
                   </button>
@@ -2753,7 +2753,7 @@ export default function ThinkAlong({
     }
 
     if (screen === 'dashboard') {
-      return <AutomationDashboard />;
+      return <AutomationDashboard onLogin={() => setScreen('login')} />;
     }
 
     if (screen === 'thinking') {

@@ -40,21 +40,23 @@ export function calculateMetrics(
   approvalRequests: ApprovalRequest[]
 ) {
   const totalExecutions = automations.reduce((acc, a) => acc + a.executionCount, 0);
-  const runningCount = automations.filter((a) => a.status === 'running').length;
-  const pendingCount = approvalRequests.filter((r) => r.status === 'pending').length;
-  const failedCount = automations.filter((a) => a.lastRunStatus === 'failed').length;
+  const running = automations.filter((a) => a.status === 'running');
+  const failed = automations.filter((a) => a.lastRunStatus === 'failed');
+  const pending = approvalRequests.filter((r) => r.status === 'pending');
   const overallSuccessRate = automations.length > 0
     ? (automations.reduce((acc, a) => acc + a.successRate, 0) / automations.length).toFixed(1)
-    : '100.0';
+    : '0.0';
 
   return {
-    todayExecutions: 24,
     totalExecutions,
-    runningCount: runningCount > 0 ? runningCount : 3,
-    pendingCount,
-    failedCount: failedCount > 0 ? failedCount : 1,
+    automationCount: automations.length,
+    runningCount: running.length,
+    runningNames: running.map((a) => a.name),
+    pendingCount: pending.length,
+    pendingAmount: pending.reduce((acc, r) => acc + (typeof r.amount === 'number' ? r.amount : 0), 0),
+    failedCount: failed.length,
+    failedNames: failed.map((a) => a.name),
     overallSuccessRate,
-    savedHours: 14.5,
   };
 }
 

@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
-  DollarSign,
   FileText,
   Layers,
   Play,
@@ -89,7 +88,28 @@ export interface AuditEntry {
 export interface AutomationDashboardProps {
   initialView?: DashboardViewMode;
   onSelectAutomation?: (automation: AutomationItem) => void;
+  onLogin?: () => void;
   className?: string;
+}
+
+export interface AutomationMetrics {
+  totalExecutions: number;
+  automationCount: number;
+  runningCount: number;
+  runningNames: string[];
+  pendingCount: number;
+  pendingAmount: number;
+  failedCount: number;
+  failedNames: string[];
+  overallSuccessRate: string;
+}
+
+export interface DashboardSkill {
+  id: string;
+  name: string;
+  description?: string;
+  status?: string;
+  version?: number;
 }
 
 type AutomationSnapshot = {
@@ -97,6 +117,19 @@ type AutomationSnapshot = {
   approvalRequests: ApprovalRequest[];
   timelineEvents: TimelineEvent[];
   auditLogs: AuditEntry[];
+  metrics: AutomationMetrics;
+};
+
+const EMPTY_METRICS: AutomationMetrics = {
+  totalExecutions: 0,
+  automationCount: 0,
+  runningCount: 0,
+  runningNames: [],
+  pendingCount: 0,
+  pendingAmount: 0,
+  failedCount: 0,
+  failedNames: [],
+  overallSuccessRate: '0.0',
 };
 
 const EMPTY_AUTOMATION = {
@@ -106,6 +139,7 @@ const EMPTY_AUTOMATION = {
 export default function AutomationDashboard({
   initialView = 'overview',
   onSelectAutomation,
+  onLogin,
   className = '',
 }: AutomationDashboardProps) {
   const [viewMode, setViewMode] = useState<DashboardViewMode>(initialView);
@@ -113,6 +147,9 @@ export default function AutomationDashboard({
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [metrics, setMetrics] = useState<AutomationMetrics>(EMPTY_METRICS);
+  const [skills, setSkills] = useState<DashboardSkill[]>([]);
+  const [authRequired, setAuthRequired] = useState(false);
   const [selectedAutomation, setSelectedAutomation] = useState<AutomationItem | null>(null);
   const [selectedApproval, setSelectedApproval] = useState<ApprovalRequest | null>(null);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
@@ -134,23 +171,37 @@ export default function AutomationDashboard({
     setApprovalRequests(snapshot.approvalRequests);
     setTimelineEvents(snapshot.timelineEvents);
     setAuditLogs(snapshot.auditLogs);
+    setMetrics(snapshot.metrics ?? EMPTY_METRICS);
     setSelectedAutomation((current) => snapshot.automations.find((item) => item.id === current?.id) ?? snapshot.automations[0] ?? null);
     setSelectedApproval((current) => snapshot.approvalRequests.find((item) => item.id === current?.id) ?? snapshot.approvalRequests.find((item) => item.status === 'pending') ?? null);
   }, []);
 
   const request = useCallback(async (url = '/api/automations', init?: RequestInit) => {
     const response = await fetch(url, init);
-    const body = await response.json();
-    if (!response.ok) throw new Error(body?.error?.message || body?.error || '자동화 요청에 실패했습니다.');
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(body?.error?.message || body?.error || '자동화 요청에 실패했습니다.'),
+        { status: response.status },
+      );
+    }
     return body;
   }, []);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
+    setAuthRequired(false);
     try {
       applySnapshot(await request());
+      try {
+        const skillsPayload = await request('/api/skills');
+        setSkills(Array.isArray(skillsPayload?.skills) ? skillsPayload.skills : []);
+      } catch {
+        setSkills([]);
+      }
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : '자동화 데이터를 불러오지 못했습니다.');
+      setAuthRequired((error as { status?: number })?.status === 401);
     } finally {
       setLoading(false);
     }
@@ -165,7 +216,12 @@ export default function AutomationDashboard({
       applySnapshot(await request());
       showToast(successMessage);
     } catch (error) {
-      showToast(`오류: ${error instanceof Error ? error.message : '요청에 실패했습니다.'}`);
+      const message = error instanceof Error ? error.message : '요청에 실패했습니다.';
+      if ((error as { status?: number })?.status === 401) {
+        setLoadError(message);
+        setAuthRequired(true);
+      }
+      showToast(`오류: ${message}`);
     } finally {
       setRequestPending(false);
     }
@@ -192,25 +248,28 @@ export default function AutomationDashboard({
     }
   };
 
-  const metrics = useMemo(() => {
-    const totalExecutions = automations.reduce((acc, a) => acc + a.executionCount, 0);
-    const runningCount = automations.filter(a => a.status === 'running').length;
-    const pendingCount = approvalRequests.filter(r => r.status === 'pending').length;
-    const failedCount = automations.filter(a => a.lastRunStatus === 'failed').length;
-    const overallSuccessRate = automations.length
-      ? (automations.reduce((acc, a) => acc + a.successRate, 0) / automations.length).toFixed(1)
-      : '0.0';
-
-    return {
-      todayExecutions: 24,
-      totalExecutions,
-      runningCount,
-      pendingCount,
-      failedCount,
-      overallSuccessRate,
-      savedHours: 14.5,
-    };
-  }, [automations, approvalRequests]);
+  const briefingBullets = useMemo(() => {
+    const bullets: Array<{ title: string; detail: string }> = [];
+    if (metrics.pendingCount > 0) {
+      bullets.push({
+        title: '승인 대기',
+        detail: `${metrics.pendingCount}건이 대기 중입니다${metrics.pendingAmount > 0 ? `(총 ₩${metrics.pendingAmount.toLocaleString()})` : ''}. 검토 후 승인·거절하세요.`,
+      });
+    }
+    if (metrics.failedCount > 0) {
+      bullets.push({
+        title: '실패한 실행',
+        detail: `${metrics.failedCount}건 확인이 필요합니다${metrics.failedNames.length ? `: ${metrics.failedNames.slice(0, 3).join(', ')}` : ''}.`,
+      });
+    }
+    if (metrics.totalExecutions > 0) {
+      bullets.push({
+        title: '누적 실행 현황',
+        detail: `누적 ${metrics.totalExecutions}건 실행 · 성공률 ${metrics.overallSuccessRate}% · 등록 자동화 ${metrics.automationCount}개.`,
+      });
+    }
+    return bullets;
+  }, [metrics]);
 
   const filteredAutomations = useMemo(() => {
     return automations.filter(auto => {
@@ -343,9 +402,14 @@ export default function AutomationDashboard({
 
       {loading && <div className="mx-6 mt-4 rounded-xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-secondary)]">서버에서 자동화 상태를 불러오는 중입니다…</div>}
       {loadError && (
-        <div role="alert" className="mx-6 mt-4 flex items-center justify-between rounded-xl border border-[color-mix(in_srgb,var(--accent-danger)_40%,transparent)] bg-[var(--accent-danger-soft)] px-4 py-3 text-sm text-[var(--accent-danger)]">
+        <div role="alert" className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--accent-danger)_40%,transparent)] bg-[var(--accent-danger-soft)] px-4 py-3 text-sm text-[var(--accent-danger)]">
           <span>{loadError}</span>
-          <button onClick={() => void refresh()} className="font-semibold text-[var(--accent-danger)] hover:underline">다시 시도</button>
+          <span className="flex shrink-0 items-center gap-3">
+            {authRequired && onLogin && (
+              <button onClick={onLogin} className="rounded-lg px-3 py-1.5 text-xs font-bold text-white shadow-sm" style={{ backgroundColor: 'var(--accent-green)' }}>로그인하기</button>
+            )}
+            <button onClick={() => void refresh()} className="font-semibold text-[var(--accent-danger)] hover:underline">다시 시도</button>
+          </span>
         </div>
       )}
 
@@ -353,18 +417,18 @@ export default function AutomationDashboard({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 px-6 pt-6">
         <div className="flex flex-col justify-between p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-primary)] hover:border-[var(--border-secondary)] transition shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">오늘 실행 완료</span>
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">누적 실행 완료</span>
             <div className="p-2 rounded-lg bg-[var(--accent-green-soft)] text-[var(--accent-green)]">
               <Zap className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[var(--text-primary)]">{metrics.todayExecutions}</span>
-            <span className="text-xs text-[var(--text-secondary)]">건 / 전체 {metrics.totalExecutions}건</span>
+            <span className="text-3xl font-black text-[var(--text-primary)]">{metrics.totalExecutions}</span>
+            <span className="text-xs text-[var(--text-secondary)]">건 / 자동화 {metrics.automationCount}개</span>
           </div>
           <div className="mt-2 flex items-center gap-1 text-[11px] text-[var(--accent-green)] font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>성공률 {metrics.overallSuccessRate}% (+12% vs 지난주)</span>
+            <span>{metrics.totalExecutions > 0 ? `성공률 ${metrics.overallSuccessRate}%` : '아직 실행 기록이 없습니다'}</span>
           </div>
         </div>
 
@@ -381,7 +445,7 @@ export default function AutomationDashboard({
           </div>
           <div className="mt-2 flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
             <Clock className="w-3.5 h-3.5 text-[var(--accent-progress)]" />
-            <span>Gmail 실시간 파싱 &amp; Drive OCR</span>
+            <span>{metrics.runningNames.length > 0 ? metrics.runningNames.slice(0, 2).join(' · ') : '실행 중인 작업 없음'}</span>
           </div>
         </div>
 
@@ -398,7 +462,7 @@ export default function AutomationDashboard({
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-black text-[var(--accent-warning)]">{metrics.pendingCount}</span>
-            <span className="text-xs text-[color-mix(in_srgb,var(--accent-warning)_80%,transparent)]">건 대기 중 (총 ₩1,200,000)</span>
+            <span className="text-xs text-[color-mix(in_srgb,var(--accent-warning)_80%,transparent)]">건 대기 중{metrics.pendingAmount > 0 ? ` (총 ₩${metrics.pendingAmount.toLocaleString()})` : ''}</span>
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px]">
             <span className="text-[var(--text-primary)]">Human-in-the-loop 정책</span>
@@ -413,18 +477,18 @@ export default function AutomationDashboard({
 
         <div className="flex flex-col justify-between p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-primary)] hover:border-[var(--border-secondary)] transition shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">이번 주 절감 시간</span>
-            <div className="p-2 rounded-lg bg-[var(--accent-purple-soft)] text-[var(--accent-purple)]">
-              <DollarSign className="w-4 h-4" />
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">실패한 실행</span>
+            <div className="p-2 rounded-lg bg-[var(--accent-danger-soft)] text-[var(--accent-danger)]">
+              <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[var(--text-primary)]">{metrics.savedHours}</span>
-            <span className="text-xs text-[var(--text-secondary)]">시간 절감 (AI 자동화)</span>
+            <span className="text-3xl font-black text-[var(--text-primary)]">{metrics.failedCount}</span>
+            <span className="text-xs text-[var(--text-secondary)]">건 확인 필요</span>
           </div>
-          <div className="mt-2 flex items-center gap-1 text-[11px] text-[var(--accent-purple)]">
+          <div className="mt-2 flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>오류 1건 자동 복구됨</span>
+            <span>{metrics.failedNames.length > 0 ? metrics.failedNames.slice(0, 2).join(' · ') : '실패 없음'}</span>
           </div>
         </div>
       </div>
@@ -517,29 +581,28 @@ export default function AutomationDashboard({
                 </div>
               </section>
 
-              {/* AI Health Briefing Card */}
+              {/* Status Briefing Card (computed from live records) */}
               <section aria-labelledby="ai-briefing-title" className="p-5 rounded-2xl bg-gradient-to-br from-[#132420] to-[#161f30] border border-[color-mix(in_srgb,var(--accent-green)_40%,transparent)] shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="p-1.5 rounded-lg bg-[var(--accent-green-soft)] text-[var(--accent-green)]">
                     <Sparkles className="w-4 h-4" />
                   </div>
                   <h2 id="ai-briefing-title" className="text-sm font-bold text-[var(--accent-green)]">
-                    AI 관제 브리핑 &amp; 이상 징후 보고
+                    자동화 현황 요약
                   </h2>
                 </div>
                 <div className="space-y-2 text-xs text-[#d1fae5] leading-relaxed">
-                  <p className="flex items-start gap-2">
-                    <span className="text-[var(--accent-green)] font-bold">•</span>
-                    <span><strong>인보이스 결제 대기:</strong> 5월 AWS 인프라 정산(₩1,200,000)이 승인 대기 중이며, 승인 즉시 회계팀에 통보됩니다.</span>
-                  </p>
-                  <p className="flex items-start gap-2">
-                    <span className="text-[var(--accent-green)] font-bold">•</span>
-                    <span><strong>이메일 자동 분류 안정성:</strong> 어제 실행된 48건 중 47건 성공(98%), 1건 서식 오류는 자동 재시도 큐에서 복구 완료되었습니다.</span>
-                  </p>
-                  <p className="flex items-start gap-2">
-                    <span className="text-[var(--accent-green)] font-bold">•</span>
-                    <span><strong>My Ways 연동 현황:</strong> &apos;B2B 메시징 원칙 v1&apos;과 &apos;회계 가이드라인 v2&apos;가 활성 상태로 주입되어 있습니다.</span>
-                  </p>
+                  {briefingBullets.length > 0 ? briefingBullets.map((bullet) => (
+                    <p key={bullet.title} className="flex items-start gap-2">
+                      <span className="text-[var(--accent-green)] font-bold">•</span>
+                      <span><strong>{bullet.title}:</strong> {bullet.detail}</span>
+                    </p>
+                  )) : (
+                    <p className="flex items-start gap-2">
+                      <span className="text-[var(--accent-green)] font-bold">•</span>
+                      <span>아직 자동화 기록이 없습니다. 새 자동화를 등록하면 여기에 요약됩니다.</span>
+                    </p>
+                  )}
                 </div>
               </section>
 
@@ -623,23 +686,24 @@ export default function AutomationDashboard({
               <section aria-labelledby="my-ways-status-title" className="p-5 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-primary)] shadow-sm">
                 <h2 id="my-ways-status-title" className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-[var(--accent-green)]" />
-                  주입된 My Ways 절차 지식
+                  등록된 My Ways ({skills.length}개)
                 </h2>
                 <div className="space-y-2">
-                  <div className="p-3 rounded-xl bg-[var(--accent-green-soft)] border border-[color-mix(in_srgb,var(--accent-green)_30%,transparent)] flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-[var(--accent-green)]">⚡ B2B 메시징 원칙 v1</p>
-                      <p className="text-[10px] text-[var(--text-secondary)]">Gmail 초안 작성 및 외부 제안서에 자동 주입</p>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--accent-green)] text-black">Active</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-secondary)] flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-[var(--text-primary)]">⚡ 회계 처리 가이드라인 v2</p>
-                      <p className="text-[10px] text-[var(--text-tertiary)]">인보이스 집계 및 ₩500,000 임계값 판정</p>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--border-secondary)] text-[var(--text-secondary)]">In-Use</span>
-                  </div>
+                  {skills.slice(0, 3).map((skill) => {
+                    const active = skill.status === 'active';
+                    return (
+                      <div key={skill.id} className="p-3 rounded-xl border flex items-center justify-between" style={{ backgroundColor: active ? 'var(--accent-green-soft)' : 'var(--bg-tertiary)', borderColor: active ? 'color-mix(in srgb, var(--accent-green) 30%, transparent)' : 'var(--border-secondary)' }}>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold" style={{ color: active ? 'var(--accent-green)' : 'var(--text-primary)' }}>⚡ {skill.name}{typeof skill.version === 'number' ? ` v${skill.version}` : ''}</p>
+                          {skill.description && <p className="truncate text-[10px] text-[var(--text-secondary)]">{skill.description}</p>}
+                        </div>
+                        <span className="ml-2 shrink-0 px-2 py-0.5 rounded text-[10px] font-bold" style={active ? { backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' } : { backgroundColor: 'var(--border-secondary)', color: 'var(--text-secondary)' }}>{active ? 'Active' : (skill.status ?? 'Draft')}</span>
+                      </div>
+                    );
+                  })}
+                  {skills.length === 0 && (
+                    <p className="text-xs text-[var(--text-secondary)]">등록된 방식이 없습니다. 대화에서 ‘나의 방식’ 초안을 만들면 여기에 표시됩니다.</p>
+                  )}
                 </div>
               </section>
             </div>

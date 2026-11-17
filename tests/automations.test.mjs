@@ -38,10 +38,26 @@ assert.equal(state.approvalRequests.length, 3, 'Seed approval requests should ha
 assert.equal(state.timelineEvents.length, 5, 'Seed timeline events should have 5 items');
 assert.equal(state.auditLogs.length, 3, 'Seed audit logs should have 3 items');
 
-assert.equal(state.metrics.todayExecutions, 24);
+assert.equal(state.metrics.totalExecutions, 573);
+assert.equal(state.metrics.automationCount, 4);
+assert.equal(state.metrics.runningCount, 1);
+assert.deepEqual(state.metrics.runningNames, ['Gmail 수신 메일 실시간 자동 분류 & 초안']);
 assert.equal(state.metrics.pendingCount, 3);
-assert.equal(typeof state.metrics.overallSuccessRate, 'string');
-assert.equal(state.metrics.savedHours, 14.5);
+assert.equal(state.metrics.pendingAmount, 5700000);
+assert.equal(state.metrics.failedCount, 0);
+assert.deepEqual(state.metrics.failedNames, []);
+assert.equal(state.metrics.overallSuccessRate, '98.0');
+assert.equal('todayExecutions' in state.metrics, false, 'metrics must not invent daily executions');
+assert.equal('savedHours' in state.metrics, false, 'metrics must not invent saved hours');
+
+const emptyState = getAutomationState({ ...mockDb, automations: [], approvalRequests: [], timelineEvents: [], auditLogs: [] });
+assert.equal(emptyState.metrics.totalExecutions, 0);
+assert.equal(emptyState.metrics.automationCount, 0);
+assert.equal(emptyState.metrics.runningCount, 0);
+assert.equal(emptyState.metrics.pendingCount, 0);
+assert.equal(emptyState.metrics.pendingAmount, 0);
+assert.equal(emptyState.metrics.failedCount, 0);
+assert.equal(emptyState.metrics.overallSuccessRate, '0.0');
 
 // ==========================================
 // 2. Create Automation Contract Test
