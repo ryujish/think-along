@@ -41,6 +41,12 @@ evaluate(`(async()=>{await fetch('/api/remote',{method:'POST',headers:{'Content-
 orca('reload', ...page);
 await until(`document.body.innerText.includes('자동화 현황 요약')`, 'dashboard');
 assert.equal(evaluate(`(async()=> (await fetch('/api/ai/runtimes')).status)()`), 401);
+click('AI Runtimes');
+await until(`document.body.innerText.includes('로그인 및 연결 상태 확인 필요')`, 'runtime auth error');
+assert.equal(evaluate(`document.body.innerText.includes('로컬 CLI 연동')`), false, 'failed lookup must not invent a local runtime');
+assert.equal(evaluate(`[...document.querySelectorAll('article button')].filter(b=>b.textContent.includes('로그인 확인')).every(b=>b.disabled)`), true);
+console.log('Runtime auth errors keep the execution mode unknown and disable verification');
+click('Profile');
 click('로그인하기');
 await until(`!!document.querySelector('#login-email')`, 'login form');
 assert.equal(evaluate(`document.querySelector('label[for="login-email"]').textContent.trim()`), '이메일');
@@ -70,7 +76,7 @@ for (const mode of ['dark', 'light']) {
   for (const width of [360, 390, 768, 1024, 1440]) {
     viewport(width); await theme(mode);
     for (const name of ['Dashboard', 'Think', 'Journey', 'Insight', width < 1024 ? 'AI 개발' : 'Director (AI 팀)', 'Profile']) {
-      click(name);
+      click(name === 'Dashboard' && width < 1024 ? '대시보드' : name);
       const result = evaluate(`(() => {const nav=document.querySelector('[aria-label="모바일 탐색"]'), desktop=document.querySelector('nav[aria-label="주요 탐색"]');return {overflow:document.documentElement.scrollWidth>innerWidth,
         mobile:!!nav?.getClientRects().length,desktop:!!desktop?.getClientRects().length,
         footerInViewport:!nav?.getClientRects().length||nav.getBoundingClientRect().bottom<=innerHeight+1,

@@ -550,7 +550,7 @@ function EmptyState({
 
 function BottomNavigation({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen) => void }) {
   const items = [
-    { screen: 'dashboard' as Screen, label: 'Dashboard', icon: LayoutDashboard },
+    { screen: 'dashboard' as Screen, label: '대시보드', icon: LayoutDashboard },
     { screen: 'home' as Screen, label: 'Think', icon: Sparkles },
     { screen: 'timeline' as Screen, label: 'Journey', icon: Compass },
     { screen: 'insight' as Screen, label: 'Insight', icon: Circle },
@@ -2164,7 +2164,7 @@ function AiAccountsScreen({
   onToggleRunnerPreference?: (cli: CliId, useRunner: boolean) => void;
   onRuntimeUpdate: (runtime: RuntimeItem) => void;
 }) {
-  const [runtimeMode, setRuntimeMode] = useState<'local' | 'server'>('local');
+  const [runtimeMode, setRuntimeMode] = useState<'local' | 'server' | null>(null);
   const [runtimes, setRuntimes] = useState<RuntimeItem[]>([]);
   const [pastedCodes, setPastedCodes] = useState<Partial<Record<CliId, string>>>({});
   const [actionBusy, setActionBusy] = useState<Partial<Record<CliId, boolean>>>({});
@@ -2282,7 +2282,7 @@ function AiAccountsScreen({
           <div>
             <span className="font-bold">런타임 모드: </span>
             <span style={{ color: 'var(--accent-green)' }}>
-              {runtimeMode === 'server' ? '원격 서버 네이티브 OAuth' : '로컬 CLI 연동'}
+              {runtimeMode === 'server' ? '원격 서버 네이티브 OAuth' : runtimeMode === 'local' ? '로컬 CLI 연동' : runtimeError ? '로그인 및 연결 상태 확인 필요' : '연결 상태 확인 중…'}
             </span>
           </div>
           <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
@@ -2467,7 +2467,7 @@ function AiAccountsScreen({
                       <button
                         type="button"
                         onClick={() => void handleRuntimeAction(provider.cli, 'cancel')}
-                        disabled={isBusy}
+                        disabled={isBusy || runtimeMode === null}
                         className="text-[11px] font-bold text-red-500 hover:underline"
                       >
                         로그인 취소
@@ -2516,7 +2516,7 @@ function AiAccountsScreen({
                           if (runtime) void handleRuntimeAction(provider.cli, 'verify');
                           else onVerify(provider.cli);
                         }}
-                        disabled={isBusy}
+                        disabled={isBusy || runtimeMode === null}
                         className="w-full h-10 px-4 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 shadow-sm"
                         style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
                       >
@@ -2545,7 +2545,7 @@ function AiAccountsScreen({
                       <button
                         type="button"
                         onClick={() => void handleRuntimeAction(provider.cli, 'verify')}
-                        disabled={isBusy}
+                        disabled={isBusy || runtimeMode === null}
                         className="h-10 px-3.5 rounded-xl border text-xs font-bold transition-colors hover:opacity-80"
                         style={{
                           borderColor: 'var(--border-secondary)',
@@ -2564,7 +2564,7 @@ function AiAccountsScreen({
                           if (runtime) void handleRuntimeAction(provider.cli, 'verify');
                           else onVerify(provider.cli);
                         }}
-                        disabled={isBusy}
+                        disabled={isBusy || runtimeMode === null}
                         className="flex-1 h-10 px-4 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 shadow-sm"
                         style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
                       >
@@ -2573,7 +2573,7 @@ function AiAccountsScreen({
                       <button
                         type="button"
                         onClick={() => void handleRuntimeAction(provider.cli, 'login')}
-                        disabled={isBusy}
+                        disabled={isBusy || runtimeMode === null}
                         className="h-10 px-3.5 rounded-xl border text-xs font-bold transition-colors hover:opacity-80"
                         style={{
                           borderColor: 'var(--border-secondary)',
