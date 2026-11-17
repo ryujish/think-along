@@ -33,10 +33,11 @@ test('native login processes isolate users, complete device/code approval, persi
 const fs=require('node:fs'),path=require('node:path'),readline=require('node:readline');
 const cli=${JSON.stringify(cli)};
 if(process.argv.includes('--version')){console.log(cli+' fixture');process.exit(0);}
+if(cli==='agy'&&process.argv.includes('--input-format')){const authenticated=fs.existsSync(path.join(process.env.HOME,'native-auth.fixture'));console.log(JSON.stringify({event:'result',result:authenticated?{status:'SUCCESS',response:'{"ok":true}'}:{status:'ERROR',error:'authentication failed'}}));process.exit(0);}
 const done=()=>{fs.writeFileSync(path.join(process.env.HOME,'native-auth.fixture'),'fixture only');console.log('Authentication successful');process.exit(0);};
 if(cli==='agy'){
  console.log('Google OAuth');let selected=false;
- readline.createInterface({input:process.stdin}).on('line',line=>{if(!selected){selected=true;console.log(${JSON.stringify(AGY_URL)}+'\\nEnter authorization code:');}else if(line==='fixture-code')done();});
+ readline.createInterface({input:process.stdin}).on('line',line=>{if(!selected){selected=true;console.log(${JSON.stringify(AGY_URL)}+'\\nEnter authorization code:');}else if(line==='fixture-code'){fs.writeFileSync(path.join(process.env.HOME,'native-auth.fixture'),'fixture only');console.log('Ready for your next task');}else{console.log('Got an error: token exchange failed: oauth2: "invalid_grant" "Malformed auth code."');}});
 }else{
  console.log(cli==='codex'?'https://auth.openai.com/codex/device':'https://auth.meta.com/oauth/device/');console.log('ABCD-EFGH');
  setInterval(()=>{if(fs.existsSync(path.join(process.env.HOME,'approved.fixture')))done();},20);
@@ -76,7 +77,8 @@ if(cli==='agy'){
       if (cli === 'agy') {
         await assert.rejects(oauthAction('other', cli, 'callback', 'fixture-code'), { status: 409 });
         await assert.rejects(oauthAction('owner', cli, 'callback', 'bad\ncode'), { status: 400 });
-        await oauthAction('owner', cli, 'callback', 'fixture-code');
+        const submitted = await oauthAction('owner', cli, 'callback', 'fixture-code');
+        assert.equal(submitted.login.needsCode, false);
       } else {
         assert.equal(pending.login.code, 'ABCD-EFGH');
         await writeFile(path.join(profilePath('owner', cli), 'approved.fixture'), 'explicit fake provider approval');
@@ -90,8 +92,14 @@ if(cli==='agy'){
     await oauthAction('cancel-user', 'codex', 'login');
     const cancelled = await oauthAction('cancel-user', 'codex', 'cancel');
     assert.equal(cancelled.login.status, 'cancelled'); assert.equal(cancelled.authenticated, false);
+    await oauthAction('rejected-code', 'agy', 'login');
+    await until(async () => (await oauthAction('rejected-code', 'agy', 'status')).login?.url);
+    await oauthAction('rejected-code', 'agy', 'callback', 'invalid-code');
+    const rejected = await until(async () => { const r = await oauthAction('rejected-code', 'agy', 'status'); return r.login?.status === 'failed' ? r : null; });
+    assert.equal(rejected.authenticated, false);
+    assert.equal(rejected.login.url, undefined);
   } finally {
-    for (const user of ['owner', 'other', 'cancel-user']) for (const cli of ['codex', 'muse', 'agy']) await oauthAction(user, cli, 'cancel').catch(() => {});
+    for (const user of ['owner', 'other', 'cancel-user', 'rejected-code']) for (const cli of ['codex', 'muse', 'agy']) await oauthAction(user, cli, 'cancel').catch(() => {});
     process.chdir(originalCwd);
     for (const [name, value] of [['THINK_ALONG_RUNTIME', prior.mode], ['PATH', prior.path], ['META_API_KEY', prior.key]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;

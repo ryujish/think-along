@@ -2375,12 +2375,12 @@ function AiAccountsScreen({
                 </div>
 
                 {provider.cli === 'codex' && runtimeMode === 'server' && !isAuthenticated && (
-                  <div className="mt-3 rounded-xl border p-3 text-xs leading-relaxed" style={{ borderColor: 'var(--border-secondary)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                    <p className="font-bold" style={{ color: 'var(--text-primary)' }}>먼저 ChatGPT에서 기기 코드 로그인을 허용하세요.</p>
+                  <details className="mt-3 rounded-xl border p-3 text-xs leading-relaxed" style={{ borderColor: 'var(--border-secondary)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                    <summary className="cursor-pointer font-bold" style={{ color: 'var(--text-primary)' }}>공식 화면에 코드 입력란이 나오지 않나요?</summary>
                     <p className="mt-1">ChatGPT → 설정 → 보안에서 ‘Codex, Excel, PowerPoint 및 Word의 기기 코드 로그인’을 켜세요. 조직 계정은 관리자의 허용이 필요할 수 있습니다. 설정 후 이곳에서 새 로그인으로 다시 시작하면 됩니다.</p>
                     <a className="mt-2 inline-flex items-center gap-1 font-bold underline" style={{ color: 'var(--accent-green)' }} href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT 열기 <ExternalLink size={12} /></a>
                     <a className="ml-4 font-semibold underline" href="https://learn.chatgpt.com/docs/auth#login-on-headless-devices" target="_blank" rel="noreferrer">공식 인증 안내</a>
-                  </div>
+                  </details>
                 )}
 
                 {/* Details / Errors */}
@@ -2408,7 +2408,7 @@ function AiAccountsScreen({
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold" style={{ color: 'var(--accent-green)' }}>
-                        브라우저에서 로그인을 완료해주세요.
+                        {runtime.login.needsCode ? 'Google 로그인 후 받은 인증 코드를 제출하세요.' : provider.cli === 'agy' ? runtime.login.detail : '공식 로그인 화면에 아래 일회용 코드를 입력하세요.'}
                       </span>
                       {runtime.login.url && (
                         <a

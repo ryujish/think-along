@@ -116,7 +116,7 @@ for (const label of ['GPT (OpenAI)', 'Gemini (Google)', 'Muse Code']) {
     assert.equal(evaluate(`(() => {const u=new URL((${authLink}).href);return ['client_id','code_challenge','redirect_uri','response_type','scope','state'].every(k=>!!u.searchParams.get(k))})()`), true);
   }
   if (label === 'GPT (OpenAI)') {
-    assert.equal(evaluate(`(${article}).innerText.includes('Codex, Excel, PowerPoint 및 Word')`), true);
+    assert.equal(evaluate(`!!(${article}).querySelector('details summary')&& !(${article}).querySelector('details').open`), true, 'Codex troubleshooting is optional help');
     const previousCode = await until(`(${article}).querySelector('code')?.textContent`, 'first device code');
     evaluate(`(() => {[...(${article}).querySelectorAll('button')].find(b=>b.textContent.includes('새 로그인으로 다시 시작')).click();return true})()`);
     await until(`(() => {const code=(${article}).querySelector('code')?.textContent;return !!code&&code!==${JSON.stringify(previousCode)}})()`, 'restart creates a fresh device code');
