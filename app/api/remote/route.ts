@@ -13,9 +13,10 @@ export async function POST(request: Request) {
       return sessionCookie(token) + (new URL(request.url).protocol === 'https:' ? '; Secure' : '');
     },
     async signedOut() { await signOut(request); return clearSessionCookie(); },
-    async prepare(body, req) {
+    async prepare(body, req, account) {
       const user = await currentUser(req);
       if (!user) throw Object.assign(new Error('Think Along에 로그인한 뒤 실행하세요.'), { status: 401 });
+      if (user.email !== account.email) throw Object.assign(new Error('대화와 개발 작업의 로그인 계정이 다릅니다. 다시 로그인하세요.'), { status: 403 });
       if (!/^[a-zA-Z0-9_-]{1,128}$/.test(body.id) || typeof body.params?.request !== 'string' || !body.params.request.trim() || body.params.request.length > 20000) {
         throw Object.assign(new Error('작업 요청 형식을 확인하세요.'), { status: 400 });
       }
