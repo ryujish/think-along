@@ -2,6 +2,15 @@
 
 ## 제품 정의
 
+### 반응형 UI와 구독 CLI 연결 (2026-11-17)
+
+- `/`는 실제 자동화 데이터의 Dashboard, `/projects`는 Think 화면으로 진입한다. 가짜 휴대폰 프레임을 제거하고 1024px부터 데스크톱 탐색을, 그 미만에서 공통 하단 탐색을 사용한다. 라이트·다크 테마를 저장하며 프로필은 실제 로그인 계정 정보를 표시한다.
+- 대화 Provider는 GPT(Codex), Gemini(agy), Muse Code(muse), Claude다. 설치 여부와 인증 여부를 구분한다. UI와 서버 모두 `lib/types.ts`의 Provider 이름을 사용한다.
+- `THINK_ALONG_RUNTIME=local`은 해당 기기의 공식 CLI 로그인을 사용한다. 서버는 강한 비밀번호 세션과 기존 대화 계정의 일치를 확인하고 사용자별 `data/cli-profiles/<userId>/<cli>`에서 Codex 기기 인증, Meta 기기 인증, Google 코드 인증을 진행한다. 제공사 승인은 사용자가 공식 화면에서 수행한다. 기존 로컬 인증을 서버에 복사하지 않는다.
+- 서버 대화는 임시 빈 작업 폴더에서 실행하며 Codex 명령·하위 에이전트 도구, Muse 도구, agy 파일·명령·MCP 접근을 제한한다. 이는 CLI 도구 정책이며 완전한 OS 다중 사용자 격리를 뜻하지 않는다. 로컬 Director 작업의 기존 권한 경계는 유지한다.
+- 대화 실행 위치는 `cli:<id>`(현재 호스트)와 `runner:<id>`(페어링한 기기)를 구분한다. 새 대화와 이어가기 모두 선택을 보존한다. 역할별 개발 작업은 기존 로컬 러너를 사용한다.
+- 배포는 GitHub Actions에서 공식 CLI 설치·버전 확인, 검증, 데이터 보존 활성화, 공개 revision 확인 순서로 수행한다.
+
 ### 기존 제품과 개발 실행의 통합 (2026-11-17)
 
 - `/projects`는 기존 Think Along의 Think·Journey·Insight·Profile 화면을 기본으로 연다. AI 개발은 같은 탐색 메뉴 안의 화면이며 `/projects?view=director`로도 진입한다.

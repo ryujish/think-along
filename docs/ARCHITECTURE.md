@@ -1,5 +1,13 @@
 # Think Along — Architecture Blueprint
 
+## 2026-11-17: 로컬 CLI와 서버 OAuth
+
+`/api/ai/runtimes`는 설치·인증·로그인 진행 상태를 구분한다. 서버에서 강한 원격 세션과 canonical 계정이 일치해야 접근할 수 있고 변경 요청의 Origin을 확인한다. `cli-oauth.mjs`는 공식 CLI의 PTY 로그인만 실행하며 공식 도메인의 URL과 일회용 코드만 UI에 전달한다. OAuth 토큰은 각 CLI가 사용자별 HOME에 저장한다. 세션·Context Packet·기기 snapshot에는 인증 정보를 넣지 않는다.
+
+서버 대화의 `runtimeExecute`는 임시 빈 cwd와 도구 제한을 적용한다. Codex의 shell/multi-agent를 끄고, Muse의 empty preset을 사용하며, agy는 파일·명령·MCP·외부 URL 도구를 거부한다. 버전 조회와 로컬 Director는 이 대화용 정책과 분리한다. 프로필 경로 분리는 애플리케이션 경계이며 OS 사용자 격리를 대체하지 않는다.
+
+Provider 선택의 `cli:<id>`는 현재 호스트의 인증을, `runner:<id>`는 해당 계정의 페어링 기기를 사용한다. 실행 실패는 성공으로 바꾸거나 다른 Provider로 전환하지 않는다. 기존 세션 ID와 조립 Context는 두 경로에서 동일하게 유지한다.
+
 ## 2026-11-17: 기존 대화와 Director의 통합
 
 `/projects`의 기본 앱과 AI 개발 화면은 같은 Think Along 탐색 구조를 사용한다. `/api/remote`는 기존 비밀번호·기기·Origin 경계를 통과한 Director 요청에 대해 대화 소유권과 전달 권한을 추가로 검사한다. Context Engine의 패킷을 역할별 실행에 전달하고, 완료·실패 증거는 원래 JSON 대화 저장소에 중복 없이 기록한다. 원격 실행 큐와 기기 페어링의 SQLite는 그대로 유지한다.

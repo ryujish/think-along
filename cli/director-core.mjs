@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile, lstat, realpath } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, lstat, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CLI_IDS, DEFAULT_ROLES, STEP_IDS, validateRoles } from '../lib/director/protocol.mjs';
 
@@ -10,11 +11,11 @@ export function cliEnvironment(source = process.env) {
     !['CLAUDECODE', 'NODE_TEST_CONTEXT', 'HERMES_YOLO_MODE', 'HERMES_ACCEPT_HOOKS', 'OPENAI_BASE_URL', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN'].includes(key)));
 }
 
-export function runProcess(command, args, { cwd, input = '', signal, timeout = 180000 } = {}) {
+export function runProcess(command, args, { cwd, input = '', signal, timeout = 180000, env } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error('작업을 중지했습니다.'));
-    const child = spawn(command, args, { cwd, env: cliEnvironment(), shell: false, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
-    let output = '', size = 0, reason, killer;
+    const child = spawn(command, args, { cwd, env: cliEnvironment(env), shell: false, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
+    let output = '', stderr = '', size = 0, reason, killer;
     const kill = sig => { try { if (child.pid && process.platform !== 'win32') process.kill(-child.pid, sig); else child.kill(sig); } catch { /* already exited */ } };
     const stop = message => { if (reason) return; reason = message; kill('SIGTERM'); killer = setTimeout(() => kill('SIGKILL'), 2000); };
     const abort = () => stop('작업을 중지했습니다.');
@@ -22,12 +23,12 @@ export function runProcess(command, args, { cwd, input = '', signal, timeout = 1
     const cleanup = () => { clearTimeout(timer); clearTimeout(killer); signal?.removeEventListener('abort', abort); };
     signal?.addEventListener('abort', abort, { once: true });
     child.stdout.on('data', chunk => { size += chunk.length; if (size > 2 * 1024 * 1024) stop('CLI 응답 크기 상한을 초과했습니다.'); else output += chunk; });
-    child.stderr.resume();
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-20000); });
     child.stdin.on('error', () => {});
     child.once('error', error => { cleanup(); reject(new Error(`${command} 실행 파일을 시작할 수 없습니다. (${error.code})`)); });
     child.once('close', code => {
       cleanup();
-      if (reason || code !== 0) reject(Object.assign(new Error(reason || `${command} 실행이 실패했습니다. (exit ${code})${CLI_IDS.includes(command) ? ' 터미널에서 CLI 인증 상태를 확인하세요.' : ''}`), { exitCode: code, output: output.slice(-20000) }));
+      if (reason || code !== 0) reject(Object.assign(new Error(reason || `${command} 실행이 실패했습니다. (exit ${code})${CLI_IDS.includes(command) ? ' 터미널에서 CLI 인증 상태를 확인하세요.' : ''}`), { exitCode: code, output: [output, stderr].filter(Boolean).join('\n').slice(-20000) }));
       else resolve({ text: output, exitCode: code });
     });
     child.stdin.end(input);
@@ -36,7 +37,7 @@ export function runProcess(command, args, { cwd, input = '', signal, timeout = 1
 
 export async function discoverClis(execute = runProcess) {
   return Promise.all(CLI_IDS.map(async id => {
-    try { const r = await execute(id, ['--version'], { timeout: 10000 }); return { id, name: { codex: 'Codex CLI', claude: 'Claude Code', agy: 'Antigravity CLI' }[id], available: true, version: r.text.trim().slice(0, 200) }; }
+    try { const r = await execute(id, ['--version'], { timeout: 10000 }); return { id, name: { codex: 'Codex CLI', claude: 'Claude Code', agy: 'Antigravity CLI', muse: 'Muse Code' }[id], available: true, version: r.text.trim().slice(0, 200) }; }
     catch { return { id, name: id, available: false, version: '' }; }
   }));
 }
@@ -50,8 +51,17 @@ export function parseJson(text) {
 
 export async function invokeCli(cli, prompt, cwd, signal, execute = runProcess) {
   if (!CLI_IDS.includes(cli)) throw new Error('허용되지 않은 CLI입니다.');
+  if (cli === 'muse') {
+    const directory = await mkdtemp(path.join(tmpdir(), 'thinkalong-muse-'));
+    try {
+      const filename = path.join(directory, 'prompt.txt');
+      await writeFile(filename, prompt, { mode: 0o600 });
+      const result = await execute('muse', ['exec', '--disable-write', '--disable-shell', '--disable-web-tools', '--disable-request-user-input', '--no-session-log', '--no-foreign-personal-context', '--prompt-file', filename], { cwd, signal });
+      return parseJson(result.text);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }
   let args, input = prompt;
-  if (cli === 'codex') args = ['exec', '--sandbox', 'read-only', '--ephemeral', '--ignore-user-config', '--json', '-'];
+  if (cli === 'codex') args = ['exec', '--sandbox', 'read-only', '--ephemeral', '--ignore-user-config', '--skip-git-repo-check', '--json', '-'];
   if (cli === 'claude') args = ['--print', '--output-format', 'json', '--permission-mode', 'plan', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--disable-slash-commands', '--no-session-persistence'];
   if (cli === 'agy') {
     args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', 'plan', '--sandbox', '--disable-slash-commands'];

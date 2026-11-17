@@ -12,6 +12,8 @@ import {
   Circle,
   Clock3,
   Compass,
+  Copy,
+  ExternalLink,
   FileText,
   Folder,
   Lightbulb,
@@ -25,7 +27,6 @@ import {
   Search,
   Send,
   Settings,
-  ShieldCheck,
   Moon,
   Sun,
   Sparkles,
@@ -38,7 +39,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTheme } from '@/lib/theme-context';
 import AutomationDashboard from '@/components/dashboard/AutomationDashboard';
 import Director from '@/components/director/Director';
-import CloudConnection from '@/components/project/CloudConnection';
+import CloudConnection, { cloudCall } from '@/components/project/CloudConnection';
+import LoginCard from '@/components/auth/LoginCard';
 
 type Screen =
   | 'splash'
@@ -59,7 +61,7 @@ type Screen =
   | 'dashboard'
   | 'director';
 
-type Provider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen';
+type Provider = import('@/lib/types').AiProvider;
 
 type AppUser = {
   id: string;
@@ -149,7 +151,7 @@ type ThinkingCard = {
   favorite: boolean;
 };
 
-type CliId = 'codex' | 'claude' | 'agy';
+type CliId = 'codex' | 'claude' | 'agy' | 'muse';
 
 type CliConnection = {
   provider: Provider;
@@ -157,6 +159,8 @@ type CliConnection = {
   connected: boolean;
   version: string;
   runnerAvailable: boolean;
+  authenticated?: boolean;
+  runtime?: 'local' | 'server';
 };
 
 type RunnerCliInfo = {
@@ -175,6 +179,7 @@ const providers: { name: Provider; cli: CliId; helper: string; icon: typeof Bot 
   { name: 'GPT', cli: 'codex', helper: 'Codex CLI 구독 로그인', icon: Bot },
   { name: 'Claude', cli: 'claude', helper: 'Claude Code 구독 로그인', icon: WandSparkles },
   { name: 'Gemini', cli: 'agy', helper: 'Antigravity CLI 구독 로그인', icon: Sparkles },
+  { name: 'Muse Code', cli: 'muse', helper: 'Muse Code CLI 구독 로그인', icon: Terminal },
 ];
 
 const CLI_MODEL = 'default';
@@ -186,6 +191,7 @@ const providerModels: Record<Provider, string[]> = {
   Grok: [CLI_MODEL],
   Kimi: [CLI_MODEL],
   'OpenCode Zen': [CLI_MODEL],
+  'Muse Code': [CLI_MODEL],
 };
 
 const providerLabels: Record<Provider, string> = {
@@ -195,6 +201,7 @@ const providerLabels: Record<Provider, string> = {
   Grok: 'Grok (xAI)',
   Kimi: 'Kimi (Moonshot AI)',
   'OpenCode Zen': 'OpenCode Zen',
+  'Muse Code': 'Muse Code',
 };
 
 const providerAccent: Record<Provider, { bg: string; text: string; short: string }> = {
@@ -204,6 +211,7 @@ const providerAccent: Record<Provider, { bg: string; text: string; short: string
   Grok: { bg: 'bg-[#171717]', text: 'text-[#d4d4d4]', short: 'Gr' },
   Kimi: { bg: 'bg-[#7657ff]', text: 'text-[#7657ff]', short: 'Ki' },
   'OpenCode Zen': { bg: 'bg-[#6d5cff]', text: 'text-[#6d5cff]', short: 'OZ' },
+  'Muse Code': { bg: 'bg-[#0f766e]', text: 'text-[#0f766e]', short: 'Mu' },
 };
 
 function cliConnectionFor(provider: Provider, connections: CliConnection[] = []) {
@@ -309,34 +317,7 @@ const getTagCounts = (thinkings: ProductThinking[]) => {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 };
 
-function StatusBar() {
-  const { theme, toggleTheme } = useTheme();
-  return (
-    <div className="flex h-9 items-center justify-between px-4 text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-      <span>9:41</span>
-      <div className="flex items-center gap-2">
-        <button aria-label="화면 모드 전환" onClick={toggleTheme} className="grid h-7 w-7 place-items-center rounded-full" style={{ color: 'var(--text-secondary)' }}>
-          {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
-        <div className="flex items-center gap-1.5">
-          <div className="flex h-3.5 items-end gap-0.5" style={{ color: 'var(--text-primary)' }}>
-            <span className="h-1.5 w-1 rounded-sm bg-current" />
-            <span className="h-2 w-1 rounded-sm bg-current" />
-            <span className="h-2.5 w-1 rounded-sm bg-current" />
-            <span className="h-3 w-1 rounded-sm bg-current" />
-          </div>
-          <div className="relative h-3.5 w-4">
-            <span className="absolute left-0 top-1.5 h-2 w-4 rounded-t-full border-2 border-b-0" style={{ borderColor: 'var(--text-primary)' }} />
-            <span className="absolute left-1 top-2 h-1.5 w-2 rounded-t-full border-2 border-b-0" style={{ borderColor: 'var(--text-primary)' }} />
-          </div>
-          <div className="flex h-3.5 w-6 items-center rounded-[3px] p-0.5" style={{ border: '1px solid', borderColor: 'var(--text-primary)' }}>
-            <span className="h-full flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--text-primary)' }} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+
 
 function BrandGlyph({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   const sizes = {
@@ -360,8 +341,8 @@ function ThinkingMascot({ compact = false }: { compact?: boolean }) {
         className="absolute left-5 top-7 h-16 w-20 rounded-[48%] shadow-[inset_0_0_28px_rgba(24,229,138,0.08)]"
         style={{ border: '1px solid var(--accent-green)', borderColor: 'color-mix(in srgb, var(--accent-green) 70%, transparent)', backgroundColor: 'color-mix(in srgb, var(--accent-green) 4%, transparent)' }}
       >
-        <span className="absolute left-6 top-7 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
-        <span className="absolute right-6 top-7 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
+        <span className="absolute left-6 top-7 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }} />
+        <span className="absolute right-6 top-7 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }} />
         <span className="absolute left-[35px] top-10 h-2 w-4 rounded-b-full border-b-2" style={{ borderColor: 'var(--accent-green)' }} />
         <span
           className="absolute -bottom-2 left-3 h-5 w-5 rounded-bl-xl"
@@ -390,8 +371,8 @@ function EmptyJourneyIllustration() {
         className="absolute left-16 top-16 h-16 w-28 rounded-xl shadow-[0_0_28px_rgba(24,229,138,0.12)]"
         style={{ border: '1px solid color-mix(in srgb, var(--accent-green) 65%, transparent)', backgroundColor: 'color-mix(in srgb, var(--accent-green) 12%, transparent)' }}
       >
-        <span className="absolute left-5 top-6 h-1.5 w-16 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
-        <span className="absolute left-5 top-10 h-1.5 w-12 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
+        <span className="absolute left-5 top-6 h-1.5 w-16 rounded-full" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }} />
+        <span className="absolute left-5 top-10 h-1.5 w-12 rounded-full" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }} />
       </div>
       <span className="absolute left-2 top-16" style={{ color: 'var(--text-tertiary)' }}>✧</span>
       <span className="absolute right-1 top-10" style={{ color: 'var(--text-tertiary)' }}>✦</span>
@@ -578,7 +559,7 @@ function BottomNavigation({ screen, setScreen }: { screen: Screen; setScreen: (s
   ];
 
   return (
-    <nav className="grid h-[76px] grid-cols-6 px-2 pt-3" style={{ borderTop: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-secondary)' }}>
+    <nav aria-label="모바일 탐색" className="grid h-[68px] grid-cols-6 px-1 pt-2 shrink-0 lg:hidden border-t" style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-secondary)' }}>
       {items.map((item) => {
         const Icon = item.icon;
         const active = item.screen === screen;
@@ -586,12 +567,13 @@ function BottomNavigation({ screen, setScreen }: { screen: Screen; setScreen: (s
         return (
           <button
             key={item.label}
+            aria-current={active ? 'page' : undefined}
             onClick={() => setScreen(item.screen)}
-            className={`flex flex-col items-center gap-1.5 text-[11px] font-semibold`}
+            className="flex flex-col items-center gap-1 text-[11px] font-semibold transition-colors"
             style={{ color: active ? 'var(--accent-green)' : 'var(--text-secondary)' }}
           >
-            <Icon size={20} fill={active ? 'currentColor' : 'none'} />
-            {item.label}
+            <Icon size={18} fill={active ? 'currentColor' : 'none'} />
+            <span className="truncate max-w-full px-0.5">{item.label}</span>
           </button>
         );
       })}
@@ -599,14 +581,87 @@ function BottomNavigation({ screen, setScreen }: { screen: Screen; setScreen: (s
   );
 }
 
-function PhoneFrame({ children }: { children: React.ReactNode }) {
+function WorkspaceShell({
+  children,
+  showMobileHeader = true,
+  setScreen,
+  user,
+  screen,
+}: {
+  children: React.ReactNode;
+  showMobileHeader?: boolean;
+  setScreen: (screen: Screen) => void;
+  user: AppUser | null;
+  screen: Screen;
+}) {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <div
-      className="relative h-[934px] w-full max-w-[426px] overflow-hidden rounded-[20px] shadow-[0_18px_80px_rgba(0,0,0,0.36)]"
-      style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-secondary)' }}
+      className="workspace-shell relative flex flex-col w-full min-w-0 overflow-hidden rounded-2xl border shadow-sm"
+      style={{
+        borderColor: showMobileHeader ? 'var(--border-primary)' : 'transparent',
+        backgroundColor: showMobileHeader ? 'var(--bg-secondary)' : 'transparent',
+        boxShadow: showMobileHeader ? undefined : 'none',
+      }}
     >
-      <StatusBar />
-      {children}
+      {showMobileHeader && (
+        <header
+          className="flex lg:hidden h-14 items-center justify-between px-4 border-b shrink-0 z-20"
+          style={{
+            borderColor: 'var(--border-primary)',
+            backgroundColor: 'var(--bg-secondary)',
+          }}
+          aria-label="모바일 헤더"
+        >
+          <button
+            onClick={() => setScreen('home')}
+            className="flex items-center gap-2 font-black text-sm"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            <span
+              className="grid h-7 w-7 place-items-center rounded-lg text-xs font-black text-white"
+              style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+            >
+              TA
+            </span>
+            <span>Think Along</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="화면 모드 전환"
+              onClick={toggleTheme}
+              className="grid h-8 w-8 place-items-center rounded-xl border transition-colors"
+              style={{
+                borderColor: 'var(--border-secondary)',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+            <button
+              type="button"
+              aria-label="내 프로필"
+              onClick={() => setScreen(user ? 'profile' : 'login')}
+              className="flex items-center gap-1.5 h-8 px-2.5 rounded-xl border text-xs font-bold"
+              style={{
+                borderColor: 'var(--border-secondary)',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <User size={14} />
+              <span className="max-w-[70px] truncate">{user?.nickname ?? (user ? '내 계정' : '로그인')}</span>
+            </button>
+          </div>
+        </header>
+      )}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
+        {children}
+      </div>
+      {showMobileHeader && <BottomNavigation screen={screen} setScreen={setScreen} />}
     </div>
   );
 }
@@ -622,19 +677,21 @@ function DesktopNavigation({
   thinkings: ProductThinking[];
   onSelectThinking: (thinking: ProductThinking) => void;
 }) {
+  const { theme, toggleTheme } = useTheme();
   const items = [
     { screen: 'dashboard' as Screen, label: 'Dashboard', icon: LayoutDashboard },
     { screen: 'home' as Screen, label: 'Think', icon: Sparkles },
     { screen: 'timeline' as Screen, label: 'Journey', icon: Compass },
     { screen: 'insight' as Screen, label: 'Insight', icon: Lightbulb },
     { screen: 'director' as Screen, label: 'Director (AI 팀)', icon: Terminal },
+    { screen: 'aiAccounts' as Screen, label: 'AI Runtimes', icon: Bot },
     { screen: 'profile' as Screen, label: 'Profile', icon: User },
   ];
 
   return (
-    <aside className="desktop-aside desktop-nav" aria-label="주요 탐색">
+    <aside className="desktop-aside desktop-nav">
       <h1>Think Along</h1>
-      <nav>
+      <nav aria-label="주요 탐색">
         {items.map((item) => {
           const Icon = item.icon;
           return <button key={item.label} aria-current={screen === item.screen ? 'page' : undefined} className={screen === item.screen ? 'active' : ''} onClick={() => setScreen(item.screen)}><Icon size={19} />{item.label}</button>;
@@ -650,6 +707,10 @@ function DesktopNavigation({
         ))}
         {thinkings.length === 0 && <p className="desktop-muted">아직 저장된 대화가 없습니다.</p>}
       </section>
+      <button aria-label="화면 모드 전환" onClick={toggleTheme} className="desktop-new-thinking mt-auto">
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        {theme === 'dark' ? '라이트 모드' : '다크 모드'}
+      </button>
     </aside>
   );
 }
@@ -900,7 +961,7 @@ function ProjectHomeScreen({
           </div>
         </section>
       </div>
-      <BottomNavigation screen="home" setScreen={setScreen} />
+
     </div>
   );
 }
@@ -934,8 +995,8 @@ function OnboardingScreen({
 }) {
   if (screen === 'splash') {
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col items-center justify-center px-8 text-center" style={{ color: 'var(--text-primary)' }}>
-        <div className="grid h-20 w-20 place-items-center rounded-2xl text-white shadow-[0_20px_40px_rgba(0,184,104,0.28)]" style={{ backgroundColor: 'var(--accent-green)' }}>
+      <div className="flex h-full min-h-0 flex-col items-center justify-center px-8 text-center" style={{ color: 'var(--text-primary)' }}>
+        <div className="grid h-20 w-20 place-items-center rounded-2xl text-white shadow-[0_20px_40px_rgba(0,184,104,0.28)]" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}>
           <Sparkles size={38} fill="currentColor" />
         </div>
         <h1 className="mt-6 text-[30px] font-black tracking-tight">Think Along</h1>
@@ -947,7 +1008,7 @@ function OnboardingScreen({
 
   if (screen === 'welcome') {
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col px-6 pb-6" style={{ color: 'var(--text-primary)' }}>
+      <div className="flex h-full min-h-0 flex-col px-6 pb-6" style={{ color: 'var(--text-primary)' }}>
         <div className="flex flex-1 flex-col justify-center">
           <p className="text-[13px] font-bold" style={{ color: 'var(--accent-green)' }}>Welcome</p>
           <h1 className="mt-3 text-[31px] font-black leading-[39px] tracking-tight">
@@ -968,7 +1029,7 @@ function OnboardingScreen({
     const slide = introSlides[introIndex];
 
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col px-6 pb-6">
+      <div className="flex h-full min-h-0 flex-col px-6 pb-6">
         <div className="flex flex-1 flex-col justify-center">
           <div className="grid h-36 place-items-center rounded-2xl" style={{ backgroundColor: 'var(--accent-green-soft)' }}>
             <div className="grid h-20 w-20 place-items-center rounded-full shadow-sm" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--accent-green)' }}>
@@ -1002,7 +1063,7 @@ function OnboardingScreen({
 
   if (screen === 'login') {
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col px-6 pb-6">
+      <div className="flex h-full min-h-0 flex-col px-6 pb-6">
         <AppHeader title="로그인" onBack={() => setScreen('intro')} />
         <div className="flex flex-1 flex-col justify-center gap-3">
           <AppButton onClick={() => setScreen('nickname')} variant="secondary">
@@ -1021,7 +1082,7 @@ function OnboardingScreen({
 
   if (screen === 'nickname') {
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col px-6 pb-6">
+      <div className="flex h-full min-h-0 flex-col px-6 pb-6">
         <AppHeader title="닉네임 설정" onBack={() => setScreen('login')} />
         <div className="flex flex-1 flex-col justify-center">
           <h2 className="text-[26px] font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>어떻게 불러드릴까요?</h2>
@@ -1047,7 +1108,7 @@ function OnboardingScreen({
 
   if (screen === 'interests') {
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col px-6 pb-6">
+      <div className="flex h-full min-h-0 flex-col px-6 pb-6">
         <AppHeader title="관심분야" onBack={() => setScreen('nickname')} />
         <div className="flex flex-1 flex-col justify-center">
           <h2 className="text-[25px] font-black leading-8 tracking-tight" style={{ color: 'var(--text-primary)' }}>Insight 분석에 사용할 관심사를 골라주세요.</h2>
@@ -1087,7 +1148,7 @@ function OnboardingScreen({
   }
 
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col px-6 pb-6">
+    <div className="flex h-full min-h-0 flex-col px-6 pb-6">
       <AppHeader title="AI Provider" onBack={() => setScreen('interests')} />
       <div className="flex flex-1 flex-col justify-center">
         <h2 className="text-[25px] font-black leading-8 tracking-tight" style={{ color: 'var(--text-primary)' }}>기본으로 사용할 AI를 선택하세요.</h2>
@@ -1169,7 +1230,7 @@ function HomeScreen({
   const visibleProviders = [...providers].sort((a, b) => Number(b.name === selectedProvider) - Number(a.name === selectedProvider));
 
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+    <div className="flex h-full min-h-0 flex-col" style={{ color: 'var(--text-primary)' }}>
       <div className="flex-1 overflow-y-auto px-5 pb-5 pt-7">
         <div className="flex items-start justify-between">
           <h2 className="text-[22px] font-extrabold leading-8 tracking-tight">
@@ -1416,7 +1477,7 @@ function HomeScreen({
         </button>
         )}
       </div>
-      <BottomNavigation screen="home" setScreen={setScreen} />
+
     </div>
   );
 }
@@ -1526,7 +1587,7 @@ function DetailScreen({
   ];
 
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+    <div className="flex h-full min-h-0 flex-col" style={{ color: 'var(--text-primary)' }}>
       <AppHeader
         title="Thinking Detail"
         onBack={() => setScreen('home')}
@@ -1588,7 +1649,7 @@ function DetailScreen({
                 onClick={() => void onSynthesizeSkill()}
                 disabled={isSaving}
                 className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                style={{ backgroundColor: 'var(--accent-green)' }}
+                style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
               >
                 초안 만들기
               </button>
@@ -1612,7 +1673,7 @@ function DetailScreen({
               { id: 'answer', role: 'assistant' as const, content: activeThinking.answer, aiProvider: activeThinking.aiProvider, createdAt: activeThinking.updatedAt },
             ]).filter((message) => message.role !== 'system').map((message) => (
               <div key={message.id} className="relative">
-                <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
+                <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }} />
                 <p className="text-[13px] font-bold">{message.role === 'user' ? '질문' : `${message.aiProvider ?? activeThinking.aiProvider} 응답`}</p>
                 <p className="text-[11px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
                   {new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt))}
@@ -1714,7 +1775,7 @@ function TimelineScreen({
     return result;
   }, []);
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+    <div className="flex h-full min-h-0 flex-col" style={{ color: 'var(--text-primary)' }}>
       <div className="flex h-[54px] items-center justify-between px-5 pt-1">
         <h1 className="pb-2 text-[13px] font-semibold" style={{ borderBottom: '2px solid var(--accent-green)', color: 'var(--text-primary)' }}>최근 대화</h1>
       </div>
@@ -1747,7 +1808,7 @@ function TimelineScreen({
                     <span className="pt-5 text-[13px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{formatShortTime(thinking.createdAt)}</span>
                     <div className="relative flex justify-center">
                       <span className="absolute bottom-0 top-0 w-px" style={{ backgroundColor: 'var(--border-primary)' }} />
-                      <span className="relative mt-5 h-3 w-3 rounded-full" style={{ backgroundColor: 'var(--accent-green)' }} />
+                      <span className="relative mt-5 h-3 w-3 rounded-full" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }} />
                     </div>
                     <button
                       onClick={() => onSelectThinking(thinking)}
@@ -1774,7 +1835,7 @@ function TimelineScreen({
         )}
 
       </div>
-      <BottomNavigation screen="timeline" setScreen={setScreen} />
+
     </div>
   );
 }
@@ -1784,7 +1845,7 @@ function SearchScreen({ setScreen }: { setScreen: (screen: Screen) => void }) {
   const filters = ['Date', 'AI', 'Tag', 'Folder', 'Favorite'];
 
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+    <div className="flex h-full min-h-0 flex-col" style={{ color: 'var(--text-primary)' }}>
       <AppHeader title="Search" onBack={() => setScreen('timeline')} />
       <div className="flex-1 overflow-y-auto px-5 pb-5">
         <label className="flex h-12 items-center gap-3 rounded-xl px-4" style={{ border: '1px solid var(--border-primary)' }}>
@@ -1832,11 +1893,9 @@ function SearchScreen({ setScreen }: { setScreen: (screen: Screen) => void }) {
 }
 
 function InsightScreen({
-  setScreen,
   thinkings,
   insights,
 }: {
-  setScreen: (screen: Screen) => void;
   thinkings: ProductThinking[];
   insights: ProductInsight[];
 }) {
@@ -1863,7 +1922,7 @@ function InsightScreen({
 
   if (thinkings.length === 0) {
     return (
-      <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+      <div className="flex h-full min-h-0 flex-col" style={{ color: 'var(--text-primary)' }}>
         <AppHeader
           title="오늘의 인사이트 ✨"
           right={
@@ -1916,13 +1975,13 @@ function InsightScreen({
             ))}
           </div>
         </div>
-        <BottomNavigation screen="insight" setScreen={setScreen} />
+
       </div>
     );
   }
 
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+    <div className="flex h-full min-h-0 flex-col" style={{ color: 'var(--text-primary)' }}>
       <AppHeader
         title="Insight"
         right={
@@ -2055,12 +2114,32 @@ function InsightScreen({
           </div>
         </section>
       </div>
-      <BottomNavigation screen="insight" setScreen={setScreen} />
+
     </div>
   );
 }
 
-function CliConnectionScreen({
+type RuntimeLogin = {
+  status: 'pending' | 'connected' | 'failed' | 'expired' | 'cancelled';
+  url?: string;
+  code?: string;
+  needsCode?: boolean;
+  detail?: string;
+};
+
+type RuntimeItem = {
+  id: CliId;
+  name: string;
+  provider: Provider;
+  installed: boolean;
+  version: string;
+  authenticated: boolean;
+  authMethod?: string;
+  detail?: string;
+  login?: RuntimeLogin;
+};
+
+function AiAccountsScreen({
   cliConnections,
   runners,
   cliAuth,
@@ -2069,6 +2148,9 @@ function CliConnectionScreen({
   onRefresh,
   onBack,
   onRunnerConnected,
+  preferredRunnerCli,
+  onToggleRunnerPreference,
+  onRuntimeUpdate,
 }: {
   cliConnections: CliConnection[];
   runners: RunnerCliInfo[];
@@ -2078,119 +2160,481 @@ function CliConnectionScreen({
   onRefresh: () => void;
   onBack: () => void;
   onRunnerConnected: () => void;
+  preferredRunnerCli?: Partial<Record<CliId, boolean>>;
+  onToggleRunnerPreference?: (cli: CliId, useRunner: boolean) => void;
+  onRuntimeUpdate: (runtime: RuntimeItem) => void;
 }) {
+  const [runtimeMode, setRuntimeMode] = useState<'local' | 'server'>('local');
+  const [runtimes, setRuntimes] = useState<RuntimeItem[]>([]);
+  const [pastedCodes, setPastedCodes] = useState<Partial<Record<CliId, string>>>({});
+  const [actionBusy, setActionBusy] = useState<Partial<Record<CliId, boolean>>>({});
+  const [copiedCodeCli, setCopiedCodeCli] = useState<CliId | null>(null);
+  const [runtimeError, setRuntimeError] = useState('');
+
+  const fetchRuntimes = useCallback(async () => {
+    try {
+      const res = await apiJson<{ mode: 'local' | 'server'; runtimes: RuntimeItem[] }>('/api/ai/runtimes');
+      if (res?.runtimes) {
+        setRuntimes(res.runtimes);
+        setRuntimeMode(res.mode || 'local');
+        res.runtimes.forEach(onRuntimeUpdate);
+        setRuntimeError('');
+      }
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : '연결 상태를 불러오지 못했습니다.');
+    }
+  }, [onRuntimeUpdate]);
+
+  useEffect(() => {
+    void fetchRuntimes();
+  }, [fetchRuntimes]);
+
+  // 2s polling while any runtime has login.status === 'pending'
+  useEffect(() => {
+    const pendingList = runtimes.filter((r) => r.login?.status === 'pending');
+    if (pendingList.length === 0) return;
+
+    const interval = setInterval(() => {
+      pendingList.forEach(async (item) => {
+        try {
+          const res = await apiJson<RuntimeItem & { mode?: 'local' | 'server' }>('/api/ai/runtimes', {
+            method: 'POST',
+            body: JSON.stringify({ cli: item.id, action: 'status' }),
+          });
+          setRuntimes((prev) =>
+            prev.map((r) => (r.id === item.id ? { ...r, ...res } : r))
+          );
+          onRuntimeUpdate(res);
+        } catch (error) {
+          setRuntimeError(error instanceof Error ? error.message : '인증 상태를 확인하지 못했습니다.');
+        }
+      });
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [runtimes, onRuntimeUpdate]);
+
+  const handleRuntimeAction = async (cli: CliId, action: 'login' | 'status' | 'verify' | 'cancel' | 'callback') => {
+    setActionBusy((prev) => ({ ...prev, [cli]: true }));
+    setRuntimeError('');
+    try {
+      const code = action === 'callback' ? pastedCodes[cli] : undefined;
+      const res = await apiJson<RuntimeItem & { mode?: 'local' | 'server' }>('/api/ai/runtimes', {
+        method: 'POST',
+        body: JSON.stringify({ cli, action, ...(code ? { code } : {}) }),
+      });
+
+      setRuntimes((prev) =>
+        prev.map((r) => (r.id === cli ? { ...r, ...res } : r))
+      );
+
+      onRuntimeUpdate(res);
+      if (action === 'callback' || action === 'cancel') setPastedCodes((prev) => ({ ...prev, [cli]: '' }));
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : '연결 요청에 실패했습니다.');
+    } finally {
+      setActionBusy((prev) => ({ ...prev, [cli]: false }));
+    }
+  };
+
+  const copyCode = async (cli: CliId, code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeCli(cli);
+      setTimeout(() => setCopiedCodeCli(null), 2000);
+    } catch {
+      setRuntimeError('코드를 복사하지 못했습니다. 표시된 코드를 직접 입력하세요.');
+    }
+  };
+
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
+    <div className="flex h-full flex-col" style={{ color: 'var(--text-primary)' }}>
       <AppHeader
-        title="CLI 연결"
+        title="AI Runtimes & CLI"
         onBack={onBack}
         right={
-          <button onClick={onRefresh} aria-label="연결 상태 새로고침" className="grid h-9 w-9 place-items-center rounded-full" style={{ color: 'var(--accent-green)' }}>
-            <RefreshCw size={19} />
+          <button
+            onClick={() => {
+              void fetchRuntimes();
+              onRefresh();
+            }}
+            aria-label="연결 상태 새로고침"
+            className="grid h-9 w-9 place-items-center rounded-xl border transition-colors"
+            style={{
+              borderColor: 'var(--border-secondary)',
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--accent-green)',
+            }}
+          >
+            <RefreshCw size={17} />
           </button>
         }
       />
-      <div className="flex-1 overflow-y-auto px-5 pb-5">
-        <p className="text-[13px] font-semibold leading-5" style={{ color: 'var(--text-secondary)' }}>
-          API Key 없이 구독 중인 CLI 로그인을 그대로 사용합니다. 이 기기의 CLI 또는 연결된 러너의 CLI로 대화합니다.
+      <div className="flex-1 overflow-y-auto px-5 pb-6">
+        {runtimeError && <p role="alert" className="mb-4 rounded-xl border p-3 text-sm" style={{ color: 'var(--accent-danger)', borderColor: 'var(--border-primary)' }}>{runtimeError}</p>}
+        <div
+          className="flex items-center justify-between gap-3 p-3 rounded-2xl border text-xs font-semibold mb-4"
+          style={{
+            borderColor: 'var(--border-primary)',
+            backgroundColor: 'var(--bg-tertiary)',
+          }}
+        >
+          <div>
+            <span className="font-bold">런타임 모드: </span>
+            <span style={{ color: 'var(--accent-green)' }}>
+              {runtimeMode === 'server' ? '원격 서버 네이티브 OAuth' : '로컬 CLI 연동'}
+            </span>
+          </div>
+          <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Codex · Claude · Antigravity · Muse Code
+          </span>
+        </div>
+
+        <p className="text-[13px] font-medium leading-relaxed mb-4" style={{ color: 'var(--text-secondary)' }}>
+          로컬에서는 이 기기의 CLI 로그인을 사용합니다. 서버에서는 각 제공사의 공식 OAuth 화면에서 내 계정을 승인해 연결합니다.
         </p>
-        <section className="mt-5 space-y-3">
+
+        {/* Runtime Providers Cards */}
+        <section className="grid gap-4 xl:grid-cols-2">
           {providers.map((provider) => {
             const Icon = provider.icon;
             const connection = cliConnectionFor(provider.name, cliConnections);
             const auth = cliAuth[provider.cli];
-            const installed = connection?.connected === true;
-            const runnerUsable = connection?.runnerAvailable === true;
-            const usable = installed || runnerUsable;
+            const runtime = runtimes.find((r) => r.id === provider.cli);
             const accent = providerAccent[provider.name];
-            const statusText = auth?.authenticated
-              ? '로그인 확인됨'
-              : installed
-                ? '설치됨 · 로그인 확인 필요'
-                : runnerUsable
-                  ? '러너에서 사용 가능'
-                  : '미연결';
+
+            const isAuthenticated = runtime
+              ? runtime.authenticated === true
+              : auth?.authenticated === true;
+            const version = runtime?.version || connection?.version || '';
+            const isPending = runtime?.login?.status === 'pending';
+            const isBusy = actionBusy[provider.cli] === true || verifyingCli === provider.cli;
 
             return (
               <article
                 key={provider.name}
-                className="rounded-xl p-4 shadow-sm"
-                style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}
+                className="rounded-2xl p-4 sm:p-5 border shadow-sm transition-all"
+                style={{
+                  borderColor: 'var(--border-primary)',
+                  backgroundColor: 'var(--bg-tertiary)',
+                }}
               >
-                <div className="flex items-center gap-4">
-                  <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${accent.bg} text-white`}>
-                    <Icon size={24} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[16px] font-black">{providerLabels[provider.name]}</h3>
-                    <p className="mt-1 text-[12px] font-bold" style={{ color: usable ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
-                      {statusText}
-                    </p>
-                    {installed && connection?.version && (
-                      <p className="mt-1 truncate text-[11px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>{connection.version}</p>
-                    )}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${accent.bg} text-white shadow-sm`}>
+                      <Icon size={22} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-base font-black">{providerLabels[provider.name]}</h3>
+                        {isAuthenticated ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+                            style={{
+                              backgroundColor: 'var(--accent-green-soft)',
+                              color: 'var(--accent-green)',
+                            }}
+                          >
+                            <Check size={12} /> 인증됨
+                          </span>
+                        ) : isPending ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+                            style={{
+                              backgroundColor: 'var(--accent-warning-soft)',
+                              color: 'var(--accent-warning)',
+                            }}
+                          >
+                            <RefreshCw size={11} className="animate-spin" /> 로그인 대기 중
+                          </span>
+                        ) : (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                            style={{
+                              backgroundColor: 'var(--bg-secondary)',
+                              color: 'var(--text-tertiary)',
+                            }}
+                          >
+                            미연결
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                        {provider.helper}
+                      </p>
+                      {version && (
+                        <p className="mt-0.5 truncate text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                          버전: {version}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {auth && !auth.authenticated && auth.detail && (
-                  <p className="mt-3 rounded-lg px-3 py-2 text-[12px] font-bold leading-5" style={{ border: '1px solid rgba(239,68,68,0.5)', backgroundColor: 'rgba(239,68,68,0.12)', color: 'var(--accent-danger)' }}>
-                    {auth.detail}
+
+                {/* Details / Errors */}
+                {(runtime?.detail || (runtime?.login && !isPending && runtime.login.status !== 'connected' && runtime.login.detail) || (auth && !auth.authenticated && auth.detail)) && (
+                  <p
+                    className="mt-3 rounded-xl p-2.5 text-xs font-semibold leading-relaxed border"
+                    style={{
+                      borderColor: 'rgba(239, 68, 68, 0.3)',
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                      color: 'var(--accent-danger)',
+                    }}
+                  >
+                    {runtime?.detail || runtime?.login?.detail || auth?.detail}
                   </p>
                 )}
-                {installed && (
-                  <button
-                    onClick={() => onVerify(provider.cli)}
-                    disabled={verifyingCli !== null}
-                    className="mt-3 h-10 w-full rounded-lg text-[13px] font-black disabled:opacity-40"
-                    style={{ border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+
+                {/* Pending OAuth State with Code / Callback */}
+                {isPending && runtime?.login && (
+                  <div
+                    className="mt-3.5 space-y-3 p-3.5 rounded-xl border text-xs"
+                    style={{
+                      borderColor: 'rgba(14, 164, 124, 0.3)',
+                      backgroundColor: 'var(--accent-green-soft)',
+                    }}
                   >
-                    {verifyingCli === provider.cli ? '로그인 확인 중...' : auth?.authenticated ? '로그인 다시 확인' : '로그인 확인'}
-                  </button>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold" style={{ color: 'var(--accent-green)' }}>
+                        브라우저에서 로그인을 완료해주세요.
+                      </span>
+                      {runtime.login.url && (
+                        <a
+                          href={runtime.login.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 font-bold underline"
+                          style={{ color: 'var(--accent-green)' }}
+                        >
+                          공식 로그인 열기 <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
+
+                    {runtime.login.code && (
+                      <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-black/10">
+                        <div>
+                          <span className="font-semibold block text-[11px] opacity-70">일회용 기기 인증 코드:</span>
+                          <span className="font-mono text-sm font-bold tracking-wider">{runtime.login.code}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void copyCode(provider.cli, runtime.login?.code || '')}
+                          className="p-1.5 rounded border text-[11px] font-bold flex items-center gap-1"
+                          style={{ borderColor: 'var(--border-secondary)', backgroundColor: 'var(--bg-secondary)' }}
+                        >
+                          {copiedCodeCli === provider.cli ? <Check size={12} /> : <Copy size={12} />}
+                          <span>복사</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {runtime.login.needsCode && (
+                      <div className="space-y-1.5">
+                        <label htmlFor={`oauth-code-${provider.cli}`} className="block text-[11px] font-bold">
+                          구글 인증 후 발급된 코드를 아래에 붙여넣으세요:
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            id={`oauth-code-${provider.cli}`}
+                            type="text"
+                            placeholder="인증 코드 붙여넣기"
+                            value={pastedCodes[provider.cli] || ''}
+                            onChange={(e) =>
+                              setPastedCodes((prev) => ({ ...prev, [provider.cli]: e.target.value }))
+                            }
+                            className="flex-1 h-9 px-3 rounded-lg border text-xs font-mono outline-none"
+                            style={{
+                              borderColor: 'var(--border-secondary)',
+                              backgroundColor: 'var(--bg-secondary)',
+                              color: 'var(--text-primary)',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={!pastedCodes[provider.cli] || isBusy}
+                            onClick={() => void handleRuntimeAction(provider.cli, 'callback')}
+                            className="h-9 px-3.5 rounded-lg text-xs font-bold text-white transition-opacity disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+                          >
+                            코드 확인
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleRuntimeAction(provider.cli, 'cancel')}
+                        disabled={isBusy}
+                        className="text-[11px] font-bold text-red-500 hover:underline"
+                      >
+                        로그인 취소
+                      </button>
+                    </div>
+                  </div>
                 )}
+
+                {/* Runner preference toggle when runner is available */}
+                {connection?.runnerAvailable && (
+                  <div className="mt-3 pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs" style={{ borderColor: 'var(--border-primary)' }}>
+                    <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>실행 위치:</span>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                        <input
+                          type="radio"
+                          name={`exec-${provider.cli}`}
+                          checked={!preferredRunnerCli?.[provider.cli]}
+                          onChange={() => onToggleRunnerPreference?.(provider.cli, false)}
+                        />
+                        <span>호스트 (cli:{provider.cli})</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                        <input
+                          type="radio"
+                          name={`exec-${provider.cli}`}
+                          checked={!!preferredRunnerCli?.[provider.cli]}
+                          onChange={() => onToggleRunnerPreference?.(provider.cli, true)}
+                        />
+                        <span>페어링 러너 (runner:{provider.cli})</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="mt-3.5 flex flex-wrap gap-2">
+                  {provider.cli === 'claude' ? (
+                    <div className="flex-1 space-y-2">
+                      <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                        Claude Code는 로컬 설치 또는 페어링된 러너를 통해 실행됩니다.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (runtime) void handleRuntimeAction(provider.cli, 'verify');
+                          else onVerify(provider.cli);
+                        }}
+                        disabled={isBusy}
+                        className="w-full h-10 px-4 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 shadow-sm"
+                        style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+                      >
+                        {isBusy ? '로그인 확인 중...' : isAuthenticated ? '로그인 다시 확인' : '로그인 확인'}
+                      </button>
+                    </div>
+                  ) : runtimeMode === 'server' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleRuntimeAction(provider.cli, 'login')}
+                        disabled={isBusy || isPending}
+                        className="flex-1 h-10 px-4 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 shadow-sm"
+                        style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+                      >
+                        {isBusy ? (
+                          <span className="flex items-center justify-center gap-1.5">
+                            <RefreshCw size={14} className="animate-spin" /> 요청 중...
+                          </span>
+                        ) : isAuthenticated ? (
+                          '구독 계정 다시 연결'
+                        ) : (
+                          '구독 로그인'
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRuntimeAction(provider.cli, 'verify')}
+                        disabled={isBusy}
+                        className="h-10 px-3.5 rounded-xl border text-xs font-bold transition-colors hover:opacity-80"
+                        style={{
+                          borderColor: 'var(--border-secondary)',
+                          backgroundColor: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        인증 확인
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (runtime) void handleRuntimeAction(provider.cli, 'verify');
+                          else onVerify(provider.cli);
+                        }}
+                        disabled={isBusy}
+                        className="flex-1 h-10 px-4 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 shadow-sm"
+                        style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+                      >
+                        {isBusy ? '로그인 확인 중...' : isAuthenticated ? '로그인 다시 확인' : '로그인 확인'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRuntimeAction(provider.cli, 'login')}
+                        disabled={isBusy}
+                        className="h-10 px-3.5 rounded-xl border text-xs font-bold transition-colors hover:opacity-80"
+                        style={{
+                          borderColor: 'var(--border-secondary)',
+                          backgroundColor: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        원격 로그인
+                      </button>
+                    </>
+                  )}
+                </div>
               </article>
             );
           })}
         </section>
 
-        <section className="mt-6">
-          <h2 className="text-[15px] font-black">연결된 러너</h2>
-          <p className="mt-1 text-[12px] font-semibold leading-5" style={{ color: 'var(--text-secondary)' }}>
-            이 기기에 CLI가 없으면 Mac 러너를 연결하세요. 러너의 로그인된 CLI로 대화가 실행됩니다.
+        {/* Connected Runners Section */}
+        <section className="mt-8 space-y-3">
+          <h2 className="text-base font-bold">연결된 컴퓨터 러너</h2>
+          <p className="text-xs font-medium leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            내 컴퓨터의 CLI를 원격 러너로 연결하면 클라우드에서도 로컬 CLI 환경 그대로 실행됩니다.
           </p>
+
           {runners.length > 0 && (
-            <div className="mt-3 space-y-2">
+            <div className="space-y-2">
               {runners.map((runner) => (
-                <article key={runner.deviceId} className="rounded-xl p-4" style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
+                <article
+                  key={runner.deviceId}
+                  className="rounded-2xl p-4 border"
+                  style={{
+                    borderColor: 'var(--border-primary)',
+                    backgroundColor: 'var(--bg-tertiary)',
+                  }}
+                >
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="truncate text-[14px] font-black">{runner.deviceName}</h3>
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black" style={{ backgroundColor: 'var(--accent-green-soft)', color: runner.online ? 'var(--accent-green)' : 'var(--text-tertiary)' }}>
+                    <h3 className="truncate text-sm font-bold">{runner.deviceName}</h3>
+                    <span
+                      className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                      style={{
+                        backgroundColor: 'var(--accent-green-soft)',
+                        color: runner.online ? 'var(--accent-green)' : 'var(--text-tertiary)',
+                      }}
+                    >
                       {runner.online ? '온라인' : '오프라인'}
                     </span>
                   </div>
                   <div className="mt-2 space-y-1">
                     {runner.clis.map((cli) => (
-                      <p key={cli.id} className="truncate text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                        {cli.id} · {cli.available ? (cli.version || '설치됨') : '미설치'}
+                      <p key={cli.id} className="truncate text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                        {cli.id} · {cli.available ? cli.version || '설치됨' : '미설치'}
                       </p>
                     ))}
-                    {runner.clis.length === 0 && (
-                      <p className="text-[12px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>CLI 정보를 아직 받지 못했습니다.</p>
-                    )}
                   </div>
                 </article>
               ))}
             </div>
           )}
-          <div className="tw-director-root mt-3" style={{ minHeight: 0, borderRadius: 12, overflow: 'hidden' }}>
-            <CloudConnection cloud director onConnected={onRunnerConnected} />
-          </div>
-        </section>
 
-        <section className="mt-6">
-          <div className="flex gap-3">
-            <ShieldCheck className="shrink-0" size={24} style={{ color: 'var(--text-secondary)' }} />
-            <p className="text-[12px] font-semibold leading-5" style={{ color: 'var(--text-secondary)' }}>
-              API Key를 입력하거나 저장하지 않습니다. CLI 인증은 내 기기에만 두고, 서버는 대화 내용과 실행 결과만 주고받습니다.
-            </p>
+          <div className="mt-3">
+            <CloudConnection cloud director onConnected={onRunnerConnected} />
           </div>
         </section>
       </div>
@@ -2201,103 +2645,152 @@ function CliConnectionScreen({
 function ProfileScreen({
   selectedProvider,
   setScreen,
-  cliConnections,
+  user,
+  onLogout,
+  cliAuth,
 }: {
   selectedProvider: Provider;
   setScreen: (screen: Screen) => void;
-  cliConnections: CliConnection[];
+  user: AppUser | null;
+  onLogout: () => Promise<void>;
+  cliAuth: Partial<Record<CliId, CliAuthState>>;
 }) {
   const { theme, toggleTheme } = useTheme();
-  const connectedCount = providers.filter((provider) => hasProviderAccess(provider.name, cliConnections)).length;
+  const connectedCount = providers.filter((provider) => cliAuth[provider.cli]?.authenticated === true).length;
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogoutClick = async () => {
+    setLoggingOut(true);
+    try {
+      await onLogout();
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
-    <div className="flex h-[calc(100%-36px)] flex-col" style={{ color: 'var(--text-primary)' }}>
-      <AppHeader title="Profile" right={<Settings size={21} />} />
-      <div className="flex-1 overflow-y-auto px-5 pb-5">
-        <section className="rounded-xl p-5 text-center" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full shadow-sm" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-            <User size={28} />
+    <div className="flex h-full flex-col" style={{ color: 'var(--text-primary)' }}>
+      <AppHeader title="Profile" />
+      <div className="flex-1 overflow-y-auto px-5 pb-6 w-full max-w-3xl mx-auto">
+        <section
+          className="rounded-2xl p-6 text-center border shadow-sm"
+          style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}
+        >
+          <div
+            className="mx-auto grid h-16 w-16 place-items-center rounded-2xl shadow-sm text-white font-black text-xl"
+            style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+          >
+            {user?.nickname ? user.nickname.slice(0, 1).toUpperCase() : <User size={28} />}
           </div>
-          <h2 className="mt-3 text-[20px] font-black">Alex</h2>
-          <p className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>Free Plan · 기본 AI {selectedProvider}</p>
+          <h2 className="mt-3 text-[20px] font-black">{user?.nickname ?? (user ? '사용자' : '게스트')}</h2>
+          <p className="mt-0.5 text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+            {user?.email ?? '로그인되지 않음'}
+          </p>
+          <div
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
+            style={{ backgroundColor: 'var(--accent-green-soft)', color: 'var(--accent-green)' }}
+          >
+            <span>기본 AI: {selectedProvider}</span>
+            <span>·</span>
+            <span>연결된 CLI: {connectedCount}개</span>
+          </div>
         </section>
 
-        <section className="mt-4 rounded-xl p-4" style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
+        {!user ? (
+          <section className="mt-4 rounded-2xl p-4 border" style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
+            <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+              로그인하여 프로젝트와 대화 기록을 서버와 동기화하세요.
+            </p>
+            <button
+              onClick={() => setScreen('login')}
+              className="mt-3 h-10 w-full rounded-xl text-xs font-bold text-white shadow-sm"
+              style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+            >
+              로그인하기
+            </button>
+          </section>
+        ) : null}
+
+        <section className="mt-4 rounded-2xl p-4 border" style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
           <div className="flex items-center gap-3">
             <BrandGlyph size="md" />
-            <p className="text-[12px] font-semibold leading-5" style={{ color: 'var(--text-secondary)' }}>구독 CLI를 연결하면 Think Along의 모든 기능을 사용할 수 있습니다.</p>
+            <p className="text-[12px] font-semibold leading-5" style={{ color: 'var(--text-secondary)' }}>
+              구독 CLI를 연결하면 Think Along의 모든 AI 모델을 사용할 수 있습니다.
+            </p>
           </div>
-          <button onClick={() => setScreen('aiAccounts')} className="mt-4 h-11 w-full rounded-lg text-[14px] font-black" style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}>
-            CLI 연결하기
+          <button
+            onClick={() => setScreen('aiAccounts')}
+            className="mt-4 h-11 w-full rounded-xl text-[14px] font-bold text-white shadow-sm"
+            style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
+          >
+            CLI 연결 관리하기
           </button>
         </section>
 
         <section className="mt-4 space-y-2">
-          {[
-            ['CLI 연결', Terminal],
-          ].map(([label, Icon]) => {
-            const ItemIcon = Icon as typeof Mail;
-
-            return (
-              <button
-                key={String(label)}
-                onClick={() => {
-                  if (label === 'CLI 연결') setScreen('aiAccounts');
-                }}
-                className="flex h-12 w-full items-center justify-between rounded-lg px-4"
-                style={{ border: '1px solid var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}
-              >
-                <span className="flex items-center gap-3 text-[14px] font-bold">
-                  <ItemIcon size={18} />
-                  {String(label)}
-                </span>
-                <span className="flex items-center gap-2">
-                  {label === 'CLI 연결' && (
-                    <span className="rounded-full px-2 py-0.5 text-[12px] font-black" style={{ backgroundColor: 'var(--accent-green-soft)', color: 'var(--accent-green)' }}>
-                      {connectedCount}
-                    </span>
-                  )}
-                  <ChevronRight size={17} style={{ color: 'var(--text-tertiary)' }} />
-                </span>
-              </button>
-            );
-          })}
+          <button
+            onClick={() => setScreen('aiAccounts')}
+            className="flex h-12 w-full items-center justify-between rounded-xl px-4 border transition-colors hover:opacity-80"
+            style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}
+          >
+            <span className="flex items-center gap-3 text-[14px] font-bold">
+              <Terminal size={18} />
+              CLI 연결 상태
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ backgroundColor: 'var(--accent-green-soft)', color: 'var(--accent-green)' }}>
+                {connectedCount}개 연결됨
+              </span>
+              <ChevronRight size={17} style={{ color: 'var(--text-tertiary)' }} />
+            </span>
+          </button>
         </section>
 
-        <section className="mt-5 rounded-xl border p-4" style={{ border: '1px solid var(--border-primary)' }}>
-          <h2 className="text-[16px] font-black">Appearance</h2>
-          <p className="mt-1 text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>화면 모드를 전환합니다.</p>
+        <section className="mt-5 rounded-2xl border p-4" style={{ borderColor: 'var(--border-primary)', backgroundColor: 'var(--bg-tertiary)' }}>
+          <h2 className="text-[15px] font-bold">Appearance (테마)</h2>
+          <p className="mt-1 text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>화면 모드를 전환합니다.</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               onClick={() => theme !== 'dark' && toggleTheme()}
-              className="flex h-14 items-center justify-center gap-2 rounded-lg text-[14px] font-bold"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl text-[13px] font-bold transition-all"
               style={{
                 backgroundColor: theme === 'dark' ? 'var(--accent-green)' : 'var(--bg-secondary)',
                 border: theme === 'dark' ? '1px solid var(--accent-green)' : '1px solid var(--border-primary)',
                 color: theme === 'dark' ? 'var(--text-inverse)' : 'var(--text-primary)',
               }}
             >
-              <Moon size={18} /> Dark
+              <Moon size={16} /> Dark Mode
             </button>
             <button
               onClick={() => theme !== 'light' && toggleTheme()}
-              className="flex h-14 items-center justify-center gap-2 rounded-lg text-[14px] font-bold"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl text-[13px] font-bold transition-all"
               style={{
                 backgroundColor: theme === 'light' ? 'var(--accent-green)' : 'var(--bg-secondary)',
                 border: theme === 'light' ? '1px solid var(--accent-green)' : '1px solid var(--border-primary)',
                 color: theme === 'light' ? 'var(--text-inverse)' : 'var(--text-primary)',
               }}
             >
-              <Sun size={18} /> Light
+              <Sun size={16} /> Light Mode
             </button>
           </div>
         </section>
 
-        <button onClick={() => setScreen('splash')} className="mt-4 h-11 w-full rounded-lg text-[14px] font-bold" style={{ border: '1px solid color-mix(in srgb, var(--accent-danger) 42%, transparent)', backgroundColor: 'color-mix(in srgb, var(--accent-danger) 10%, transparent)', color: 'var(--accent-danger)' }}>
-          로그아웃
-        </button>
+        {user && (
+          <button
+            onClick={handleLogoutClick}
+            disabled={loggingOut}
+            className="mt-5 h-11 w-full rounded-xl text-[13px] font-bold transition-opacity hover:opacity-80 disabled:opacity-50 border"
+            style={{
+              borderColor: 'rgba(239, 68, 68, 0.4)',
+              backgroundColor: 'rgba(239, 68, 68, 0.08)',
+              color: 'var(--accent-danger)',
+            }}
+          >
+            {loggingOut ? '로그아웃 중...' : '로그아웃'}
+          </button>
+        )}
       </div>
-      <BottomNavigation screen="profile" setScreen={setScreen} />
+
     </div>
   );
 }
@@ -2348,6 +2841,7 @@ export default function ThinkAlong({
   const [runners, setRunners] = useState<RunnerCliInfo[]>([]);
   const [cliAuth, setCliAuth] = useState<Partial<Record<CliId, CliAuthState>>>({});
   const [verifyingCli, setVerifyingCli] = useState<CliId | null>(null);
+  const [preferredRunnerCli, setPreferredRunnerCli] = useState<Partial<Record<CliId, boolean>>>({});
   const [previewMode] = useState(false);
   const [collaborationEnabled, setCollaborationEnabled] = useState(false);
   const [skills, setSkills] = useState<ProductSkill[]>([]);
@@ -2437,6 +2931,7 @@ export default function ThinkAlong({
     const payload = await apiJson<{ providers: CliConnection[]; runners: RunnerCliInfo[] }>('/api/ai/providers');
     setCliConnections(payload.providers);
     setRunners(payload.runners ?? []);
+    setCliAuth((current) => ({ ...current, ...Object.fromEntries(payload.providers.filter((item) => item.runtime === 'server').map((item) => [item.cli, { authenticated: item.authenticated === true, detail: '' }])) }));
   }, []);
 
   const verifyCliLogin = useCallback(async (cli: CliId) => {
@@ -2453,6 +2948,11 @@ export default function ThinkAlong({
     } finally {
       setVerifyingCli(null);
     }
+  }, []);
+
+  const updateRuntime = useCallback((runtime: RuntimeItem) => {
+    setCliAuth((current) => ({ ...current, [runtime.id]: { authenticated: runtime.authenticated === true, detail: runtime.detail || '' } }));
+    setCliConnections((current) => current.map((connection) => connection.cli === runtime.id ? { ...connection, connected: runtime.authenticated === true, installed: runtime.installed, version: runtime.version } : connection));
   }, []);
 
   const reloadCanonicalAuth = useCallback(async () => {
@@ -2574,7 +3074,11 @@ export default function ThinkAlong({
   const cliCredentialFor = (provider: Provider) => {
     const connection = cliConnectionFor(provider, cliConnections);
     if (!connection) return undefined;
-    return { connectionId: `cli:${connection.cli}`, model: CLI_MODEL };
+    const useRunner = preferredRunnerCli[connection.cli] && connection.runnerAvailable;
+    return {
+      connectionId: useRunner ? `runner:${connection.cli}` : `cli:${connection.cli}`,
+      model: CLI_MODEL,
+    };
   };
 
   const collaboratorProviderFor = (provider: Provider): Provider | null => {
@@ -2688,16 +3192,37 @@ export default function ThinkAlong({
     setApiMessage('Thinking을 삭제했습니다.');
   };
 
-  const renderScreen = () => {
-    if (screen === 'login' || (screen === 'profile' && !user)) {
-      return <div className="tw-director-root" style={{ minHeight: '100%', padding: 20 }}>
-        <h2>Think Along 로그인</h2>
-        <p>대화와 개발 작업을 같은 계정으로 이어가세요.</p>
-        <CloudConnection cloud director onConnected={() => { void reloadCanonicalAuth().then(() => setScreen('home')); }} />
-        <button type="button" onClick={() => setScreen('home')}>돌아가기</button>
-      </div>;
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore
     }
-    if (['splash', 'welcome', 'intro', 'login', 'nickname', 'interests', 'provider'].includes(screen)) {
+    try {
+      await cloudCall('logout');
+    } catch {
+      // ignore
+    }
+    setUser(null);
+    setScreen('home');
+    setApiMessage('로그아웃되었습니다.');
+  };
+
+  const renderScreen = () => {
+    if (screen === 'login') {
+      return (
+        <div className="flex min-h-full flex-1 items-center justify-center p-4">
+          <LoginCard
+            onSuccess={async () => {
+              await reloadCanonicalAuth();
+              setScreen('home');
+            }}
+            onBack={() => setScreen('home')}
+          />
+        </div>
+      );
+    }
+    if (['splash', 'welcome', 'intro', 'nickname', 'interests', 'provider'].includes(screen)) {
       return (
         <OnboardingScreen
           screen={screen}
@@ -2811,18 +3336,23 @@ export default function ThinkAlong({
       );
     }
     if (screen === 'search') return <SearchScreen setScreen={setScreen} />;
-    if (screen === 'insight') return <InsightScreen setScreen={setScreen} thinkings={thinkings} insights={insights} />;
+    if (screen === 'insight') return <InsightScreen thinkings={thinkings} insights={insights} />;
     if (screen === 'aiAccounts') {
       return (
-        <CliConnectionScreen
+        <AiAccountsScreen
           cliConnections={cliConnections}
           runners={runners}
           cliAuth={cliAuth}
           verifyingCli={verifyingCli}
           onVerify={(cli) => void verifyCliLogin(cli)}
+          onRuntimeUpdate={updateRuntime}
           onRefresh={() => void loadCliConnections().catch(() => setApiMessage('연결 상태를 새로고침하지 못했습니다.'))}
           onBack={() => setScreen('profile')}
           onRunnerConnected={() => void loadCliConnections()}
+          preferredRunnerCli={preferredRunnerCli}
+          onToggleRunnerPreference={(cli, useRunner) =>
+            setPreferredRunnerCli((prev) => ({ ...prev, [cli]: useRunner }))
+          }
         />
       );
     }
@@ -2857,24 +3387,32 @@ export default function ThinkAlong({
               }}
             />
           </div>
-          <BottomNavigation screen="director" setScreen={setScreen} />
+
         </div>
       );
     }
 
-    return <ProfileScreen selectedProvider={selectedProvider} setScreen={setScreen} cliConnections={cliConnections} />;
+    return (
+      <ProfileScreen
+        selectedProvider={selectedProvider}
+        setScreen={setScreen}
+        user={user}
+        onLogout={handleLogout}
+        cliAuth={cliAuth}
+      />
+    );
   };
 
   const showDesktopWorkspace = !['splash', 'welcome', 'intro', 'login', 'nickname', 'interests', 'provider'].includes(screen);
 
   return (
-    <main className="min-h-screen px-4 py-6 sm:px-6" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', backgroundImage: 'radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--accent-green) 9%, transparent) 0%, transparent 28%)' }}>
-      <section className={`desktop-workspace mx-auto w-full max-w-[1600px] ${screen === 'dashboard' || screen === 'director' ? 'dashboard-workspace' : ''} ${showDesktopWorkspace ? '' : 'desktop-workspace-single'}`}>
+    <main className="min-h-screen px-2 py-3 sm:px-4 sm:py-6" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', backgroundImage: 'radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--accent-green) 9%, transparent) 0%, transparent 28%)' }}>
+      <section className={`desktop-workspace mx-auto w-full max-w-[1600px] ${['dashboard', 'director', 'profile', 'aiAccounts'].includes(screen) ? 'dashboard-workspace' : ''} ${showDesktopWorkspace ? '' : 'desktop-workspace-single'}`}>
         {showDesktopWorkspace && <DesktopNavigation screen={screen} setScreen={setScreen} thinkings={thinkings} onSelectThinking={openThinking} />}
-        <PhoneFrame>
+        <WorkspaceShell screen={screen} showMobileHeader={showDesktopWorkspace} setScreen={setScreen} user={user}>
           {renderScreen()}
-        </PhoneFrame>
-        {showDesktopWorkspace && screen !== 'dashboard' && screen !== 'director' && <DesktopContext screen={screen} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedThinking={selectedThinking} thinkings={thinkings} messages={conversationMessages} decisions={selectedDecisions} events={selectedEvents} skills={skills} onSynthesizeSkill={synthesizeSkill} onApproveSkill={approveSkill} onToggleSkill={toggleSkill} onSelectModel={setSelectedModel} onSelectThinking={openThinking} onSelectSource={openConversationSource} />}
+        </WorkspaceShell>
+        {showDesktopWorkspace && !['dashboard', 'director', 'profile', 'aiAccounts'].includes(screen) && <DesktopContext screen={screen} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedThinking={selectedThinking} thinkings={thinkings} messages={conversationMessages} decisions={selectedDecisions} events={selectedEvents} skills={skills} onSynthesizeSkill={synthesizeSkill} onApproveSkill={approveSkill} onToggleSkill={toggleSkill} onSelectModel={setSelectedModel} onSelectThinking={openThinking} onSelectSource={openConversationSource} />}
         {apiMessage && (
           <div className="fixed bottom-6 left-1/2 z-50 max-w-[320px] -translate-x-1/2 rounded-full px-4 py-2 text-center text-[12px] font-bold shadow-lg" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)' }}>
             {apiMessage}

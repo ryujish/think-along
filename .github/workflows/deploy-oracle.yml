@@ -65,7 +65,7 @@ jobs:
         run: |
           release="/home/opc/thingalong-releases/${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ssh -i ~/.ssh/oracle "$USER@$HOST" \
-            "node -e 'require(\"node:sqlite\")' && sudo install -m 0644 '$release/deploy/thingalong.service' /etc/systemd/system/thingalong.service && sudo systemctl daemon-reload && bash '$release/deploy/activate-release.sh' '$release' /home/opc/thingalong '$GITHUB_SHA'"
+            "node -e 'require(\"node:sqlite\")' && bash '$release/deploy/install-clis.sh' && sudo install -m 0644 '$release/deploy/thingalong.service' /etc/systemd/system/thingalong.service && sudo systemctl daemon-reload && bash '$release/deploy/activate-release.sh' '$release' /home/opc/thingalong '$GITHUB_SHA'"
 
       - name: Verify public revision
         run: |

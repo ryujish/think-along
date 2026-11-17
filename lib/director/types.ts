@@ -1,4 +1,4 @@
-export type DirectorCli = 'codex' | 'claude' | 'agy';
+export type DirectorCli = 'codex' | 'claude' | 'agy' | 'muse';
 export type DirectorRole = 'head' | 'builder' | 'reviewer';
 export type DirectorRoles = Record<DirectorRole, DirectorCli>;
 export type DirectorStepId = DirectorRole | 'verify' | 'decision';

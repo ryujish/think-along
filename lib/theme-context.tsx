@@ -19,14 +19,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored === 'light' || stored === 'dark') {
-      setThemeState(stored);
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
+      if (stored === 'light' || stored === 'dark') {
+        setThemeState(stored);
+      }
+    } catch {
+      // ignore
     }
+    setMounted(true);
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     const root = document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
@@ -36,8 +41,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.style.colorScheme = theme;
     try {
       window.localStorage.setItem(STORAGE_KEY, theme);
-    } catch { /* noop */ }
-  }, [theme]);
+    } catch {
+      // noop
+    }
+  }, [theme, mounted]);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));

@@ -56,6 +56,7 @@ const CLI_META: Record<DirectorCli, { name: string; provider: string; icon: stri
   codex: { name: 'Codex CLI', provider: 'OpenAI', icon: '/studio-assets/openai.svg' },
   claude: { name: 'Claude Code', provider: 'Anthropic', icon: '/studio-assets/claude.svg' },
   agy: { name: 'Antigravity CLI', provider: 'Google', icon: '/studio-assets/gemini.svg' },
+  muse: { name: 'Muse Code', provider: 'Meta', icon: '/studio-assets/muse.ico' },
 };
 
 const ROLE_INFO: Record<DirectorRole, { title: string; subtitle: string; icon: React.ReactNode }> = {
@@ -330,6 +331,7 @@ export default function Director({
       codex: 'unknown',
       claude: 'unknown',
       agy: 'unknown',
+      muse: 'unknown',
     };
     if (!snapshot?.director?.clis) {
       return map;

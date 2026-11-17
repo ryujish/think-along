@@ -9,7 +9,7 @@ export type SessionCommand = {
   error?: string;
 };
 
-const providers: Record<string, AiProvider> = { codex: 'GPT', claude: 'Claude', agy: 'Gemini' };
+const providers: Record<string, AiProvider> = { codex: 'GPT', claude: 'Claude', agy: 'Gemini', muse: 'Muse Code' };
 const fail = (message: string, status: number): never => { throw Object.assign(new Error(message), { status }); };
 
 export function directorSessionInput(db: AppDatabase, userId: string, sessionId: unknown, requestId: string, prompt: string, roles: DirectorRoles) {
@@ -17,7 +17,7 @@ export function directorSessionInput(db: AppDatabase, userId: string, sessionId:
     (item.id === sessionId || item.thinkalongSessionId === sessionId) && item.userId === userId && item.status === 'active');
   if (sessionId !== undefined && !thinking) fail('이어갈 대화를 찾을 수 없습니다.', 404);
   if (thinking && Object.values(roles).some(cli => !thinking.contextPolicy.allowedProviders.includes(providers[cli]))) {
-    fail('대화의 전달 권한에서 GPT·Claude·Gemini를 허용한 뒤 실행하세요.', 403);
+    fail('선택한 CLI의 Provider를 대화 전달 설정에서 허용한 뒤 실행하세요.', 403);
   }
   return {
     canonical: { userId, thinkingId: thinking?.id ?? requestId },
@@ -45,7 +45,7 @@ export function recordDirectorRequest(db: AppDatabase, command: SessionCommand) 
     thinking = {
       id: thinkingId, thinkalongSessionId: sessionId, userId, title: request.slice(0, 80), prompt: request,
       aiProvider: providers[roles.head], selectedConnectionId: 'director', selectedModel: 'cli-team',
-      contextPolicy: { allowedProviders: ['GPT', 'Claude', 'Gemini'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' },
+      contextPolicy: { allowedProviders: ['GPT', 'Claude', 'Gemini', 'Muse Code'], includeDecisions: true, includeRecentMessages: true, routingMode: 'manual' },
       status: 'active', favorite: false, tags: ['개발'], answer: '', createdAt: stamp, updatedAt: stamp,
     } satisfies Thinking;
     db.thinkings.push(thinking);

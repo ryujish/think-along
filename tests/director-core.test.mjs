@@ -143,6 +143,24 @@ test('CLI envelopes use exact allowlisted commands and stdin; no provider fallba
   assert.equal(JSON.stringify(safe).includes('never-sync'), false); assert.equal('worktree' in safe.activeRun, false); assert.equal(safe.activeRun.diff, undefined);
 });
 
+test('native failure retains bounded stderr for authentication diagnostics', async () => {
+  await assert.rejects(runProcess(process.execPath, ['-e', 'process.stderr.write("authentication failed");process.exit(1)']), error => error.output === 'authentication failed');
+});
+
+test('Muse uses the official file prompt contract with tools disabled and removes its temporary prompt', async () => {
+  let promptFile;
+  const result = await invokeCli('muse', 'Only the supplied canonical conversation', '/tmp', undefined, async (command, args, options) => {
+    assert.equal(command, 'muse');
+    for (const flag of ['exec', '--disable-write', '--disable-shell', '--disable-web-tools', '--no-foreign-personal-context']) assert.ok(args.includes(flag));
+    promptFile = args[args.indexOf('--prompt-file') + 1];
+    assert.equal(await readFile(promptFile, 'utf8'), 'Only the supplied canonical conversation');
+    assert.equal(options.input, undefined);
+    return { text: '{"answer":"Muse fixture"}', exitCode: 0 };
+  });
+  assert.equal(result.answer, 'Muse fixture');
+  await assert.rejects(readFile(promptFile, 'utf8'), { code: 'ENOENT' });
+});
+
 test('stop and timeout terminate bounded subprocesses instead of returning fabricated results', async () => {
   const controller = new AbortController();
   const pending = runProcess(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { signal: controller.signal, timeout: 10000 });

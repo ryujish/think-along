@@ -8,7 +8,7 @@ import { recordEvent } from '@/lib/server/events';
 import { readDb, updateDb } from '@/lib/server/db';
 import type { AiProvider, Attachment, ConversationMessage, Thinking } from '@/lib/types';
 
-const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'];
+const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini', 'Muse Code', 'Grok', 'Kimi', 'OpenCode Zen'];
 
 export async function GET(request: Request) {
   const auth = await requireUser(request);
@@ -59,6 +59,7 @@ export async function POST(request: Request) {
       provider: aiProvider,
       context: contextPacket,
       model: selection.model,
+      connectionId: selection.connectionId,
     });
   } catch (error) {
     return NextResponse.json(

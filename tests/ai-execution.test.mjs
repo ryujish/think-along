@@ -13,12 +13,12 @@ const context = { thinkalongSessionId: 's1', version: 1, system: 'shared', decis
 
 test('CLI catalog exposes subscription logins without API keys', () => {
   const catalog = getProviderCatalog();
-  assert.deepEqual(catalog.map((item) => item.label), ['GPT', 'Claude', 'Gemini']);
-  assert.deepEqual(catalog.map((item) => item.id), ['openai', 'anthropic', 'gemini']);
+  assert.deepEqual(catalog.map((item) => item.label), ['GPT', 'Claude', 'Gemini', 'Muse Code']);
+  assert.deepEqual(catalog.map((item) => item.id), ['openai', 'anthropic', 'gemini', 'meta']);
   for (const item of catalog) {
     const connection = item.connections[0];
     assert.equal(connection.authKind, 'cli');
-    assert.match(connection.id, /^cli:(codex|claude|agy)$/);
+    assert.match(connection.id, /^cli:(codex|claude|agy|muse)$/);
     assert.deepEqual(connection.models, [{ id: 'default', text: true }]);
   }
 });
@@ -58,8 +58,8 @@ test('CLI availability probing never reports missing binaries as connected', asy
 
 test('provider statuses mirror local CLI probes', async () => {
   const statuses = await getAiProviderStatuses();
-  assert.deepEqual(statuses.map((item) => item.provider), ['GPT', 'Claude', 'Gemini']);
-  assert.deepEqual(statuses.map((item) => item.cli), ['codex', 'claude', 'agy']);
+  assert.deepEqual(statuses.map((item) => item.provider), ['GPT', 'Claude', 'Gemini', 'Muse Code']);
+  assert.deepEqual(statuses.map((item) => item.cli), ['codex', 'claude', 'agy', 'muse']);
   for (const status of statuses) {
     assert.equal(typeof status.connected, 'boolean');
     assert.equal(typeof status.version, 'string');

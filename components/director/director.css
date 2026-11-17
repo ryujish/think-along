@@ -1,23 +1,23 @@
 /* Think Along Director UI Styles */
 
 :root {
-  --tw-director-bg: #f8f6f0;
-  --tw-director-card-bg: #ffffff;
+  --tw-director-bg: var(--bg-primary, #f8f6f0);
+  --tw-director-card-bg: var(--bg-secondary, #ffffff);
   --tw-director-sidebar-bg: #181b1f;
   --tw-director-sidebar-card: #22262c;
   --tw-director-sidebar-border: #2e343d;
   --tw-director-sidebar-text: #e2e8f0;
   --tw-director-sidebar-muted: #94a3b8;
   
-  --tw-director-text-primary: #1e293b;
-  --tw-director-text-secondary: #64748b;
-  --tw-director-border: #e2dfd7;
-  --tw-director-border-light: #ece9e1;
+  --tw-director-text-primary: var(--text-primary, #1e293b);
+  --tw-director-text-secondary: var(--text-secondary, #64748b);
+  --tw-director-border: var(--border-primary, #e2dfd7);
+  --tw-director-border-light: var(--border-secondary, #ece9e1);
   
-  --tw-director-teal: #0f766e;
-  --tw-director-teal-hover: #115e59;
-  --tw-director-teal-light: #f0fdfa;
-  --tw-director-teal-border: #99f6e4;
+  --tw-director-teal: var(--accent-green, #0f766e);
+  --tw-director-teal-hover: var(--accent-green-hover, #115e59);
+  --tw-director-teal-light: var(--accent-green-soft, #f0fdfa);
+  --tw-director-teal-border: var(--border-secondary, #99f6e4);
   
   --tw-director-orange: #c2410c;
   --tw-director-orange-hover: #9a3412;

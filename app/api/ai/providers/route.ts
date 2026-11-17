@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 import { getAiProviderStatuses, getProviderCatalog, type RunnerCliStatus } from '@/lib/server/ai';
 import { requireUser } from '@/lib/server/auth';
 import { getRemoteStore, remoteSessionCookie } from '@/lib/server/remote-http.mjs';
+import { requireRuntimeUser } from '@/lib/server/runtime-user';
 
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (!auth.user) return auth.response;
+  try { await requireRuntimeUser(request); }
+  catch (error) { return NextResponse.json({ error: { code: 'AUTH_REQUIRED', message: (error as Error).message } }, { status: (error as { status?: number }).status || 401 }); }
 
   const runners: RunnerCliStatus[] = [];
   const store = getRemoteStore();
@@ -34,7 +37,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const providers = (await getAiProviderStatuses()).map((status) => ({
+  const providers = (await getAiProviderStatuses(auth.user.id)).map((status) => ({
     ...status,
     runnerAvailable: runners.some((runner) => runner.online && runner.clis.some((cli) => cli.id === status.cli && cli.available)),
   }));

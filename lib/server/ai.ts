@@ -1,4 +1,5 @@
 import type { AiProvider, ContextPacket, ModelCapability, ProviderCatalogItem, ProviderId } from '@/lib/types';
+import { authenticationState, runtimeMode } from './cli-profile.mjs';
 import {
   CLI_RUNTIMES as CLI_RUNTIMES_RAW,
   cliSetupGuide,
@@ -15,6 +16,8 @@ export type GenerateThinkingInput = {
   provider: AiProvider;
   context: ContextPacket;
   model?: string;
+  connectionId?: string;
+  userId?: string;
 };
 
 export type AiResult = {
@@ -38,7 +41,7 @@ export type RunnerCliStatus = {
   clis: Array<{ id: string; available: boolean; version: string }>;
 };
 
-const providerIds: Record<string, ProviderId> = { GPT: 'openai', Claude: 'anthropic', Gemini: 'gemini' };
+const providerIds: Record<string, ProviderId> = { GPT: 'openai', Claude: 'anthropic', Gemini: 'gemini', 'Muse Code': 'meta' };
 const defaultModels: ModelCapability[] = [{ id: 'default', text: true }];
 
 export const CLI_BACKED_PROVIDERS: AiProvider[] = CLI_RUNTIMES.map((runtime: { provider: AiProvider }) => runtime.provider);
@@ -63,19 +66,22 @@ export function getProviderCatalog(): ProviderCatalogItem[] {
   }));
 }
 
-export async function getAiProviderStatuses(): Promise<AiProviderStatus[]> {
+export async function getAiProviderStatuses(userId?: string): Promise<AiProviderStatus[]> {
   const probed = await getLocalCliStatuses();
-  return CLI_RUNTIMES.map((runtime: { id: string; provider: AiProvider }) => {
+  return Promise.all(CLI_RUNTIMES.map(async (runtime: { id: string; provider: AiProvider }) => {
     const found = (probed as Array<{ id: string; installed: boolean; version: string }>).find((item) => item.id === runtime.id);
-    return { provider: runtime.provider, cli: runtime.id, connected: found?.installed === true, version: found?.version ?? '' };
-  });
+    const auth = runtimeMode() === 'server' ? await authenticationState(userId, runtime.id) : { authenticated: false };
+    return { provider: runtime.provider, cli: runtime.id, installed: found?.installed === true,
+      connected: found?.installed === true && (runtimeMode() === 'local' || auth.authenticated === true),
+      authenticated: auth.authenticated === true, runtime: runtimeMode(), version: found?.version ?? '' };
+  }));
 }
 
 function requireCli(provider: AiProvider): string {
   const cli = (providerCli as Record<string, string>)[provider];
   if (!cli) {
     throw new Error(
-      `${provider}는 구독 CLI 연결을 지원하지 않습니다. GPT·Claude·Gemini 중 CLI에 로그인된 Provider를 선택해주세요. 기존 대화 내용은 그대로 보관됩니다.`,
+      `${provider}는 구독 CLI 연결을 지원하지 않습니다. Codex·agy·Muse Code·Claude 중 로그인된 CLI를 선택해주세요. 기존 대화 내용은 그대로 보관됩니다.`,
     );
   }
   return cli;
@@ -85,7 +91,7 @@ export function resolveProviderSelection(provider: AiProvider, connectionId?: st
   const cli = requireCli(provider);
   return {
     provider,
-    connectionId: connectionId?.trim() || `cli:${cli}`,
+    connectionId: connectionId?.trim() === `runner:${cli}` ? `runner:${cli}` : `cli:${cli}`,
     model: model?.trim() || 'default',
   };
 }
@@ -93,7 +99,7 @@ export function resolveProviderSelection(provider: AiProvider, connectionId?: st
 export async function generateThinking(input: GenerateThinkingInput): Promise<AiResult> {
   const cli = requireCli(input.provider);
   try {
-    return await generateThinkingViaCli({ cli, prompt: input.prompt, context: input.context });
+    return await generateThinkingViaCli({ cli, prompt: input.prompt, context: input.context, userId: input.userId });
   } catch (error) {
     if ((error as { code?: string }).code === 'CLI_NOT_INSTALLED') throw error;
     if (error instanceof Error) throw error;

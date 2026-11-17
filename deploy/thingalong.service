@@ -8,6 +8,8 @@ Type=simple
 User=opc
 WorkingDirectory=/home/opc/thingalong
 Environment=NODE_ENV=production
+Environment=THINK_ALONG_RUNTIME=server
+Environment=PATH=/home/opc/.local/bin:/home/opc/thinkalong-tools/node_modules/.bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/home/opc/thingalong/.env
 ExecStart=/usr/bin/env TALO_CLOUD_ENABLED=1 TALO_CLOUD_ORIGIN=https://thinkalong.ai.kr /usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
 NoNewPrivileges=true

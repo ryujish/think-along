@@ -7,7 +7,7 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini', 'Grok', 'Kimi', 'OpenCode Zen'];
+const validProviders: AiProvider[] = ['GPT', 'Claude', 'Gemini', 'Muse Code', 'Grok', 'Kimi', 'OpenCode Zen'];
 
 export async function GET(request: Request, context: RouteContext) {
   const auth = await requireUser(request);

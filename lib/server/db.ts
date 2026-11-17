@@ -22,6 +22,7 @@ const defaultSelections: Record<AiProvider, { connectionId: string; model: strin
   GPT: { connectionId: 'openai:environment', model: process.env.OPENAI_MODEL || 'gpt-5.6-terra' },
   Claude: { connectionId: 'anthropic:environment', model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5' },
   Gemini: { connectionId: 'gemini:environment', model: process.env.GEMINI_MODEL || 'gemini-3.7-flash' },
+  'Muse Code': { connectionId: 'cli:muse', model: 'default' },
   Grok: { connectionId: 'xai:environment', model: process.env.XAI_MODEL || 'grok-4.6' },
   Kimi: { connectionId: 'moonshot:environment', model: process.env.MOONSHOT_MODEL || 'kimi-k3' },
   'OpenCode Zen': { connectionId: 'opencode:environment', model: process.env.OPENCODE_ZEN_MODEL || 'x-preview-f-free' },

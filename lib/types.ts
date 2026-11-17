@@ -1,6 +1,6 @@
 export type AuthProvider = 'email' | 'google' | 'apple';
-export type AiProvider = 'GPT' | 'Claude' | 'Gemini' | 'Grok' | 'Kimi' | 'OpenCode Zen';
-export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'xai' | 'moonshot' | 'opencode';
+export type AiProvider = 'GPT' | 'Claude' | 'Gemini' | 'Muse Code' | 'Grok' | 'Kimi' | 'OpenCode Zen';
+export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'meta' | 'xai' | 'moonshot' | 'opencode';
 export type ConnectionStatus = 'unknown' | 'available' | 'unavailable';
 
 export type ModelCapability = {
