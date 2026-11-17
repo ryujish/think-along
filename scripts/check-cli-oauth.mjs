@@ -21,6 +21,11 @@ try {
     }
     assert.ok(status.installed && status.login?.url, `${cli}: native OAuth startup failed (${status.login?.status})`);
     assert.equal(status.authenticated, false, `${cli}: disposable profile must have no credentials`);
+    if (cli === 'agy') {
+      const response = await fetch(status.login.url, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
+      assert.ok(response.status < 400, `agy: authorization URL returned HTTP ${response.status}`);
+      console.log(`agy: authorization URL HTTP ${response.status}`);
+    }
     console.log(`${cli}: ${status.version}; native OAuth ready (${new URL(status.login.url).hostname})`);
   }));
   const failure = results.find(result => result.status === 'rejected');

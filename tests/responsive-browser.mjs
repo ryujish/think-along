@@ -108,9 +108,19 @@ await until(`document.body.innerText.includes('원격 서버 네이티브 OAuth'
 for (const label of ['GPT (OpenAI)', 'Gemini (Google)', 'Muse Code']) {
   const article = `[...document.querySelectorAll('article')].find(a=>a.querySelector('h3')?.textContent.includes(${JSON.stringify(label)}))`;
   assert.equal(evaluate(`(() => {const a=${article};const b=[...a.querySelectorAll('button')].find(b=>b.textContent.trim()==='구독 로그인');if(!b)return false;b.click();return true})()`), true);
-  await until(`!!(${article})?.querySelector('a[target="_blank"]')`, `${label} native OAuth URL`);
-  const hostname = evaluate(`new URL((${article}).querySelector('a[target="_blank"]').href).hostname`);
-  assert.equal(hostname, { 'GPT (OpenAI)': 'auth.openai.com', 'Gemini (Google)': 'accounts.google.com', 'Muse Code': 'auth.meta.com' }[label]);
+  const authLink = `${article}.querySelector('a[target="_blank"][href*="${label === 'GPT (OpenAI)' ? 'auth.openai.com' : label === 'Gemini (Google)' ? 'accounts.google.com' : 'auth.meta.com'}"]')`;
+  await until(`!!(${authLink})`, `${label} actual OAuth link`);
+  const authHost = evaluate(`new URL((${authLink}).href).hostname`);
+  assert.equal(authHost, { 'GPT (OpenAI)': 'auth.openai.com', 'Gemini (Google)': 'accounts.google.com', 'Muse Code': 'auth.meta.com' }[label]);
+  if (label === 'Gemini (Google)') {
+    assert.equal(evaluate(`(() => {const u=new URL((${authLink}).href);return ['client_id','code_challenge','redirect_uri','response_type','scope','state'].every(k=>!!u.searchParams.get(k))})()`), true);
+  }
+  if (label === 'GPT (OpenAI)') {
+    assert.equal(evaluate(`(${article}).innerText.includes('Codex, Excel, PowerPoint 및 Word')`), true);
+    const previousCode = await until(`(${article}).querySelector('code')?.textContent`, 'first device code');
+    evaluate(`(() => {[...(${article}).querySelectorAll('button')].find(b=>b.textContent.includes('새 로그인으로 다시 시작')).click();return true})()`);
+    await until(`(() => {const code=(${article}).querySelector('code')?.textContent;return !!code&&code!==${JSON.stringify(previousCode)}})()`, 'restart creates a fresh device code');
+  }
   evaluate(`(() => {const b=[...(${article}).querySelectorAll('button')].find(b=>b.textContent.includes('취소'));b.click();return true})()`);
   await until(`!(${article}).innerText.includes('로그인 대기 중')`, `${label} cancel`);
   assert.equal(evaluate(`(${article}).innerText.includes('인증됨')`), false, 'cancel never shows connected');

@@ -6,11 +6,21 @@ import os from 'node:os';
 import { parseLoginOutput, oauthAction } from '../lib/server/cli-oauth.mjs';
 import { profileEnvironment, profilePath, authenticationState, runtimeExecute } from '../lib/server/cli-profile.mjs';
 
+const AGY_URL = 'https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=fixture.apps.googleusercontent.com&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789abcdefghi&code_challenge_method=S256&prompt=consent&redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback&response_type=code&scope=openid+email&state=fixture-state';
+
 test('OAuth UI only receives approved provider URLs and one-time codes', () => {
   assert.deepEqual(parseLoginOutput('codex', '\x1b[32mhttps://auth.openai.com/codex/device\x1b[0m\nABCD-EFGHI'), { url: 'https://auth.openai.com/codex/device', code: 'ABCD-EFGHI' });
   assert.equal(parseLoginOutput('muse', 'https://evil.test/?token=private').url, undefined);
   assert.equal(parseLoginOutput('agy', 'https://accounts.google.com.evil.test/').url, undefined);
-  assert.equal(parseLoginOutput('agy', 'https://accounts.google.com/o/oauth2/auth?state=fixture').url, 'https://accounts.google.com/o/oauth2/auth?state=fixture');
+  assert.equal(parseLoginOutput('agy', AGY_URL + '\nEnter authorization code:').url, AGY_URL);
+});
+
+test('AGY URLs survive terminal wrapping and are never published before the complete URL boundary', () => {
+  const wrapped = 'Open this URL:\n ─────\n ' + AGY_URL.match(/.{1,72}/g).join('\r\n ') + '\r\n ─────\nEnter authorization code:';
+  assert.equal(parseLoginOutput('agy', wrapped).url, AGY_URL);
+  assert.equal(parseLoginOutput('agy', wrapped.slice(0, wrapped.indexOf(' ─────', 25))).url, undefined);
+  assert.equal(parseLoginOutput('agy', AGY_URL.slice(0, -3)).url, undefined);
+  assert.equal(parseLoginOutput('agy', 'https://accounts.google.com/o/oauth2/auth?access_type=offline&client_id=123\nEnter code:').url, undefined);
 });
 
 test('native login processes isolate users, complete device/code approval, persist state and cancel without false success', { timeout: 15000 }, async () => {
@@ -26,7 +36,7 @@ if(process.argv.includes('--version')){console.log(cli+' fixture');process.exit(
 const done=()=>{fs.writeFileSync(path.join(process.env.HOME,'native-auth.fixture'),'fixture only');console.log('Authentication successful');process.exit(0);};
 if(cli==='agy'){
  console.log('Google OAuth');let selected=false;
- readline.createInterface({input:process.stdin}).on('line',line=>{if(!selected){selected=true;console.log('https://accounts.google.com/o/oauth2/auth?state=fixture');}else if(line==='fixture-code')done();});
+ readline.createInterface({input:process.stdin}).on('line',line=>{if(!selected){selected=true;console.log(${JSON.stringify(AGY_URL)}+'\\nEnter authorization code:');}else if(line==='fixture-code')done();});
 }else{
  console.log(cli==='codex'?'https://auth.openai.com/codex/device':'https://auth.meta.com/oauth/device/');console.log('ABCD-EFGH');
  setInterval(()=>{if(fs.existsSync(path.join(process.env.HOME,'approved.fixture')))done();},20);

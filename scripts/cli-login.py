@@ -1,9 +1,12 @@
 """Give the official login CLI a terminal; forward input without logging secrets."""
 import os
+import fcntl
 import pty
 import select
 import signal
 import sys
+import struct
+import termios
 
 commands = {
     "codex": ["codex", "login", "--device-auth", "-c", 'cli_auth_credentials_store="file"'],
@@ -15,6 +18,7 @@ if len(sys.argv) != 2 or sys.argv[1] not in commands:
 
 pid, fd = pty.fork()
 if pid == 0:
+    fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 4096, 0, 0))
     os.execvp(commands[sys.argv[1]][0], commands[sys.argv[1]])
 
 

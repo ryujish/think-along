@@ -2202,7 +2202,7 @@ function AiAccountsScreen({
             body: JSON.stringify({ cli: item.id, action: 'status' }),
           });
           setRuntimes((prev) =>
-            prev.map((r) => (r.id === item.id ? { ...r, ...res } : r))
+            prev.map((r) => (r.id === item.id ? res : r))
           );
           onRuntimeUpdate(res);
         } catch (error) {
@@ -2218,6 +2218,9 @@ function AiAccountsScreen({
     setActionBusy((prev) => ({ ...prev, [cli]: true }));
     setRuntimeError('');
     try {
+      if (action === 'login' && runtimes.find((item) => item.id === cli)?.login?.status === 'pending') {
+        await apiJson('/api/ai/runtimes', { method: 'POST', body: JSON.stringify({ cli, action: 'cancel' }) });
+      }
       const code = action === 'callback' ? pastedCodes[cli] : undefined;
       const res = await apiJson<RuntimeItem & { mode?: 'local' | 'server' }>('/api/ai/runtimes', {
         method: 'POST',
@@ -2225,7 +2228,7 @@ function AiAccountsScreen({
       });
 
       setRuntimes((prev) =>
-        prev.map((r) => (r.id === cli ? { ...r, ...res } : r))
+        prev.map((r) => (r.id === cli ? res : r))
       );
 
       onRuntimeUpdate(res);
@@ -2371,6 +2374,15 @@ function AiAccountsScreen({
                   </div>
                 </div>
 
+                {provider.cli === 'codex' && runtimeMode === 'server' && !isAuthenticated && (
+                  <div className="mt-3 rounded-xl border p-3 text-xs leading-relaxed" style={{ borderColor: 'var(--border-secondary)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                    <p className="font-bold" style={{ color: 'var(--text-primary)' }}>먼저 ChatGPT에서 기기 코드 로그인을 허용하세요.</p>
+                    <p className="mt-1">ChatGPT → 설정 → 보안에서 ‘Codex, Excel, PowerPoint 및 Word의 기기 코드 로그인’을 켜세요. 조직 계정은 관리자의 허용이 필요할 수 있습니다. 설정 후 이곳에서 새 로그인으로 다시 시작하면 됩니다.</p>
+                    <a className="mt-2 inline-flex items-center gap-1 font-bold underline" style={{ color: 'var(--accent-green)' }} href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT 열기 <ExternalLink size={12} /></a>
+                    <a className="ml-4 font-semibold underline" href="https://learn.chatgpt.com/docs/auth#login-on-headless-devices" target="_blank" rel="noreferrer">공식 인증 안내</a>
+                  </div>
+                )}
+
                 {/* Details / Errors */}
                 {(runtime?.detail || (runtime?.login && !isPending && runtime.login.status !== 'connected' && runtime.login.detail) || (auth && !auth.authenticated && auth.detail)) && (
                   <p
@@ -2415,7 +2427,7 @@ function AiAccountsScreen({
                       <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-black/10">
                         <div>
                           <span className="font-semibold block text-[11px] opacity-70">일회용 기기 인증 코드:</span>
-                          <span className="font-mono text-sm font-bold tracking-wider">{runtime.login.code}</span>
+                          <code className="font-mono text-sm font-bold tracking-wider">{runtime.login.code}</code>
                         </div>
                         <button
                           type="button"
@@ -2528,7 +2540,7 @@ function AiAccountsScreen({
                       <button
                         type="button"
                         onClick={() => void handleRuntimeAction(provider.cli, 'login')}
-                        disabled={isBusy || isPending}
+                        disabled={isBusy}
                         className="flex-1 h-10 px-4 rounded-xl text-xs font-bold text-white transition-opacity disabled:opacity-50 shadow-sm"
                         style={{ backgroundColor: 'var(--accent-green)', color: 'var(--text-inverse)' }}
                       >
@@ -2536,6 +2548,8 @@ function AiAccountsScreen({
                           <span className="flex items-center justify-center gap-1.5">
                             <RefreshCw size={14} className="animate-spin" /> 요청 중...
                           </span>
+                        ) : isPending ? (
+                          '새 로그인으로 다시 시작'
                         ) : isAuthenticated ? (
                           '구독 계정 다시 연결'
                         ) : (
