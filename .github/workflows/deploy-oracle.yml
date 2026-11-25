@@ -97,12 +97,12 @@ jobs:
           chmod 600 ~/.ssh/oracle ~/.ssh/known_hosts
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/oracle "$USER@$HOST" 'bash -se' <<'REMOTE'
           sudo nginx -t
-          sudo certbot renew --cert-name thinkalong.ai.kr --non-interactive
+          sudo certbot renew --cert-name thinkalong.ai.kr --non-interactive --no-random-sleep-on-renew
           sudo systemctl enable --now certbot-renew.timer
           systemctl is-enabled certbot-renew.timer
           systemctl is-active certbot-renew.timer
           systemctl list-timers --all certbot-renew.timer --no-pager
-          sudo certbot renew --cert-name thinkalong.ai.kr --non-interactive --dry-run
+          sudo certbot renew --cert-name thinkalong.ai.kr --non-interactive --no-random-sleep-on-renew --dry-run
           REMOTE
 
       - name: Verify public HTTPS
