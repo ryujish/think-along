@@ -11,7 +11,7 @@ on:
         default: false
 
 concurrency:
-  group: oracle-production
+  group: ${{ inputs.inspect_tls && 'oracle-tls-observation' || 'oracle-production' }}
   cancel-in-progress: false
 
 permissions:
@@ -104,5 +104,9 @@ jobs:
           sudo grep -E '^(authenticator|installer|webroot_path|pre_hook|post_hook|renew_hook) *=' /etc/letsencrypt/renewal/thinkalong.ai.kr.conf || true
           sudo openssl x509 -in /etc/letsencrypt/live/thinkalong.ai.kr/fullchain.pem -noout -dates
           sudo find /etc/letsencrypt/renewal-hooks -maxdepth 2 -type f -printf '%P\n'
-          sudo journalctl -u 'certbot*' --since '45 days ago' -n 45 --no-pager --output=cat | grep -E 'Failed to renew certificate|could not bind|renewal failure|failed authorization|unauthorized|No entries' || true
+          ps -C certbot -o pid,etime,stat,wchan,comm || true
+          sudo stat -c '%y %n' /var/log/letsencrypt/letsencrypt.log
+          sudo tail -n 100 /var/log/letsencrypt/letsencrypt.log | grep -Eo 'ConnectTimeout[^: ]*|ReadTimeout[^: ]*|ConnectionError|NameResolutionError|Temporary failure in name resolution|CertificateVerificationError|SSLError|starting new HTTPS connection|Challenge failed|Some challenges have failed|Successfully received certificate|Failed to renew certificate|No renewals were attempted|nginx restart failed|timed out' | sort | uniq -c || true
+          curl -fsS --connect-timeout 5 --max-time 10 -o /dev/null -w 'Production ACME directory: %{http_code}\n' https://acme-v02.api.letsencrypt.org/directory || true
+          curl -fsS --connect-timeout 5 --max-time 10 -o /dev/null -w 'Staging ACME directory: %{http_code}\n' https://acme-staging-v02.api.letsencrypt.org/directory || true
           REMOTE
