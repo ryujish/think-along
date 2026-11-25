@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      inspect_tls:
+        description: Inspect the production TLS renewal setup
+        type: boolean
+        default: false
 
 concurrency:
   group: oracle-production
@@ -14,6 +19,7 @@ permissions:
 
 jobs:
   deploy:
+    if: ${{ !inputs.inspect_tls }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -72,3 +78,31 @@ jobs:
           test "$(curl --fail --silent --show-error --max-time 15 https://thinkalong.ai.kr/release.txt)" = "$GITHUB_SHA"
           curl --fail --silent --show-error --max-time 15 https://thinkalong.ai.kr/projects >/dev/null
           test "$(curl --silent --show-error --max-time 15 -o /tmp/director-remote-health.json -w '%{http_code}' -H 'Origin: https://thinkalong.ai.kr' -H 'Content-Type: application/json' --data '{"action":"me"}' https://thinkalong.ai.kr/api/remote)" = 401
+
+  inspect-tls:
+    if: ${{ inputs.inspect_tls }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect Certbot renewal
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
+          HOST: ${{ secrets.ORACLE_HOST }}
+          USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/oracle
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/oracle ~/.ssh/known_hosts
+          ssh -i ~/.ssh/oracle "$USER@$HOST" 'bash -se' <<'REMOTE'
+          . /etc/os-release
+          printf '%s\n' "$PRETTY_NAME"
+          sudo certbot --version || true
+          systemctl list-unit-files '*certbot*' --no-pager
+          systemctl list-timers --all '*certbot*' --no-pager
+          sudo grep -E '^(authenticator|installer|webroot_path|pre_hook|post_hook|renew_hook) *=' /etc/letsencrypt/renewal/thinkalong.ai.kr.conf || true
+          sudo openssl x509 -in /etc/letsencrypt/live/thinkalong.ai.kr/fullchain.pem -noout -dates
+          sudo find /etc/letsencrypt/renewal-hooks -maxdepth 2 -type f -printf '%P\n'
+          sudo journalctl -u 'certbot*' --since '45 days ago' -n 45 --no-pager --output=cat | grep -E 'Failed to renew certificate|could not bind|renewal failure|failed authorization|unauthorized|No entries' || true
+          REMOTE
